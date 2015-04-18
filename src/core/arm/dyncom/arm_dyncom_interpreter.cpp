@@ -24,6 +24,10 @@
 Common::Profiling::TimingCategory profile_execute("DynCom::Execute");
 Common::Profiling::TimingCategory profile_decode("DynCom::Decode");
 
+#include "core/arm/jit/Jit.h"
+
+Jit *g_jit=nullptr;
+
 enum {
     COND            = (1 << 0),
     NON_BRANCH      = (1 << 1),
@@ -3621,7 +3625,9 @@ typedef struct instruction_set_encoding_item ISEITEM;
 extern const ISEITEM arm_instruction[];
 
 static int InterpreterTranslate(ARMul_State* cpu, int& bb_start, u32 addr) {
-    Common::Profiling::ScopeTimer timer_decode(profile_decode);
+	Common::Profiling::ScopeTimer timer_decode(profile_decode);
+
+	g_jit->InterpreterTranslate(cpu, addr);
 
     // Decode instruction, get index
     // Allocate memory and init InsCream
@@ -3692,6 +3698,8 @@ static int clz(unsigned int x) {
 
 unsigned InterpreterMainLoop(ARMul_State* state) {
     Common::Profiling::ScopeTimer timer_execute(profile_execute);
+
+	if (!g_jit) g_jit = new Jit();
 
     #undef RM
     #undef RS

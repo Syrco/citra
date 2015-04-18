@@ -189,4 +189,18 @@ if(ENABLE_QT)
     include_directories(externals/qhexedit)
     add_subdirectory(externals/qhexedit)
 endif()
+
+set(LLVM_DIR externals/llvm/build/cmake/modules)
+find_package(LLVM REQUIRED CONFIG)
+
+include_directories(${LLVM_INCLUDE_DIRS})
+include_directories(externals/llvm/lib)
+include_directories(externals/llvm/build/lib)
+include_directories(externals/llvm/build/lib/Target/ARM)
+add_definitions(${LLVM_DEFINITIONS})
+
+llvm_map_components_to_libnames(llvm_libs Core Support X86 Arm ArmCodeGen ArmAsmParser ArmAsmPrinter ArmDisassembler ExecutionEngine MCJIT)
+
+message("Using libraries ${llvm_libs}")
+
 add_subdirectory(src)

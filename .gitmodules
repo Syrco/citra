@@ -7,3 +7,7 @@
 [submodule "externals/nihstro"]
 	path = externals/nihstro
 	url = https://github.com/neobrain/nihstro.git
+[submodule "externals/llvm"]
+	path = externals/llvm
+	url = https://github.com/llvm-mirror/llvm.git
+	branch = release_36
