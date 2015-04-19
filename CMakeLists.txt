@@ -190,17 +190,63 @@ if(ENABLE_QT)
     add_subdirectory(externals/qhexedit)
 endif()
 
-set(LLVM_DIR externals/llvm/build/cmake/modules)
+set(llvm_targets LLVMCore
+				 LLVMSupport
+				 LLVMX86CodeGen
+				 LLVMX86AsmPrinter
+				 LLVMX86AsmParser
+				 LLVMX86Desc
+				 LLVMX86Info
+				 LLVMX86Disassembler
+				 LLVMARMCodeGen
+				 LLVMARMAsmParser
+				 LLVMARMAsmPrinter
+				 LLVMARMDisassembler
+				 LLVMExecutionEngine
+				 LLVMMCJIT
+				 LLVMX86Utils
+				 LLVMAsmPrinter
+				 LLVMSelectionDAG
+				 LLVMCodeGen
+				 LLVMScalarOpts
+				 LLVMInstCombine
+				 LLVMTransformUtils
+				 LLVMipa
+				 LLVMAnalysis
+				 LLVMProfileData
+				 LLVMARMDesc
+				 LLVMMCDisassembler
+				 LLVMARMInfo
+				 LLVMTarget
+				 LLVMRuntimeDyld
+				 LLVMObject
+				 LLVMMCParser
+				 LLVMMC
+				 LLVMBitReader
+				 LLVMBitWriter)
+				 
+set(llvm_build_command "echo Building llvm")
+				 
+foreach(target ${llvm_targets})
+	set(llvm_build_command "${llvm_build_command} && \"${CMAKE_COMMAND}\" --build ${CMAKE_BINARY_DIR}/llvm-prefix/src/llvm-build --target ${target}")
+endforeach()
+
+message("${llvm_build_command}")
+#
+#include(ExternalProject)
+#ExternalProject_Add(llvm
+#					SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/externals/llvm
+#					BUILD_COMMAND ${llvm_build_command})
+
+set(LLVM_DIR ${CMAKE_BINARY_DIR}/llvm-prefix/src/llvm-build/share/llvm/cmake)
 find_package(LLVM REQUIRED CONFIG)
 
 include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(externals/llvm/lib)
-include_directories(externals/llvm/build/lib)
-include_directories(externals/llvm/build/lib/Target/ARM)
+include_directories(${CMAKE_BINARY_DIR}/llvm-prefix/src/llvm-build/lib)
+include_directories(${CMAKE_BINARY_DIR}/llvm-prefix/src/llvm-build/lib/Target/ARM)
 add_definitions(${LLVM_DEFINITIONS})
 
-llvm_map_components_to_libnames(llvm_libs Core Support X86 Arm ArmCodeGen ArmAsmParser ArmAsmPrinter ArmDisassembler ExecutionEngine MCJIT)
-
-message("Using libraries ${llvm_libs}")
+llvm_map_components_to_libnames(llvm_libs Core Support X86 Arm ArmCodeGen ArmAsmParser ArmAsmPrinter ArmDisassembler ExecutionEngine MCJIT BitWriter)
 
 add_subdirectory(src)

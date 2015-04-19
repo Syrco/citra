@@ -3627,8 +3627,6 @@ extern const ISEITEM arm_instruction[];
 static int InterpreterTranslate(ARMul_State* cpu, int& bb_start, u32 addr) {
 	Common::Profiling::ScopeTimer timer_decode(profile_decode);
 
-	g_jit->InterpreterTranslate(cpu, addr);
-
     // Decode instruction, get index
     // Allocate memory and init InsCream
     // Go on next, until terminal instruction
@@ -4009,9 +4007,21 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
 
         phys_addr = cpu->Reg[15];
 
-        if (find_bb(cpu->Reg[15], ptr) == -1)
-            if (InterpreterTranslate(cpu, ptr, cpu->Reg[15]) == FETCH_EXCEPTION)
-                goto END;
+		if (find_bb(cpu->Reg[15], ptr) == -1)
+		{
+			g_jit->InterpreterTranslate(cpu, phys_addr);
+
+			if (cpu->TFlag)
+				cpu->Reg[15] &= 0xfffffffe;
+			else
+				cpu->Reg[15] &= 0xfffffffc;
+			phys_addr = cpu->Reg[15];
+			if (find_bb(cpu->Reg[15], ptr) == -1)
+			{
+				if (InterpreterTranslate(cpu, ptr, cpu->Reg[15]) == FETCH_EXCEPTION)
+					goto END;
+			}
+		}
 
         inst_base = (arm_inst *)&inst_buf[ptr];
         GOTO_NEXT_INST;

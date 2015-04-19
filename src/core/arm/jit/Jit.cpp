@@ -42,7 +42,10 @@ struct Jit::Private
 
 	struct ARMul_State *state;
 
+	using CompiledBlock = void(*)();
+
 	vector<unique_ptr<class JitBlock>> jitBlocks;
+	std::map<int, CompiledBlock> compiledBlocks;
 
 	bool InterpreterTranslate(struct ARMul_State* cpu, u32 addr);
 };
@@ -62,6 +65,7 @@ struct JitBlock
 
 	Function *function;
 	std::map<int, Register> registers;
+	Module *module;
 
 	u32 *GetRegisterPtr(int reg);
 	Value *GetConstPtr(void *ptr);
@@ -131,42 +135,62 @@ bool Jit::Private::InterpreterTranslate(ARMul_State *state, u32 addr)
 {
 	this->state = state;
 
+	//static u32 count = 0;
+	//if (count >= 32) return false;
+	//++count;
+
 	if (state->TFlag) return false;
 
-	auto jb = new JitBlock(this);
+	CompiledBlock ptr;
 
-	for (size_t instructionCount = 0;; ++instructionCount)
+	auto firstAddr = addr;
+
+	auto i = compiledBlocks.find(addr);
+	if (i == compiledBlocks.end())
 	{
-		if (jb->AddInstruction(&addr)) continue;
-		if (!instructionCount)
+		auto jb = new JitBlock(this);
+
+		for (size_t instructionCount = 0;; ++instructionCount)
 		{
-			delete jb;
-			return false;
+			if (jb->AddInstruction(&addr)) continue;
+			if (instructionCount < 5)
+			{
+				compiledBlocks[firstAddr] = nullptr;
+				delete jb;
+				return false;
+			}
+			auto pc = jb->GetConstPtr(&state->Reg[15]);
+			auto delta = ConstantInt::getIntegerValue(Type::getInt32Ty(getGlobalContext()), APInt(32, 4 * instructionCount));
+			auto add = builder->CreateAdd(builder->CreateLoad(pc), delta);
+			builder->CreateStore(add, pc);
+			verifyFunction(*jb->function);
+			jb->Finalize();
+			//jb->module->dump();
+			executionEngine->finalizeObject();
+			void *f = executionEngine->getPointerToFunction(jb->function);
+
+			//jb->function->dump();
+
+			compiledBlocks[firstAddr] = ptr = (CompiledBlock)f;
+			break;
 		}
-		auto pc = jb->GetConstPtr(&state->Reg[15]);
-		auto delta = ConstantInt::getIntegerValue(Type::getInt32Ty(getGlobalContext()), APInt(32, 4 * instructionCount));
-		auto add = builder->CreateAdd(builder->CreateLoad(pc), delta);
-		builder->CreateStore(add, pc);
-		verifyFunction(*jb->function);
-		jb->Finalize();
-		module->dump();
-		executionEngine->finalizeObject();
-		void *f = executionEngine->getPointerToFunction(jb->function);
-
-		jb->function->dump();
-
-		auto fPtr = (void(*)())f;
-		__debugbreak();
-		fPtr();
-		return true;
 	}
+	else
+	{
+		ptr = i->second;
+	}
+	if (!ptr) return false;
+	ptr();
+	return true;
 }
 
 JitBlock::JitBlock(Jit::Private *jit) : jit(jit)
 {
 	FunctionType *ft = FunctionType::get(Type::getVoidTy(getGlobalContext()), false);
 
-	function = Function::Create(ft, Function::ExternalLinkage, "", jit->module);
+	module = new Module("", getGlobalContext());
+	jit->executionEngine->addModule(unique_ptr<Module>(module));
+	function = Function::Create(ft, Function::ExternalLinkage, "", module);
 	BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "", function);
 	jit->builder->SetInsertPoint(bb);
 }
@@ -229,7 +253,7 @@ bool JitBlock::AddInstruction(u32 *addr)
 
 	auto opcode = instruction.getOpcode();
 
-	LOG_INFO(Core_ARM11, "Status %x, Opcode %x", status, opcode);
+	//LOG_INFO(Core_ARM11, "Status %x, Opcode %x", status, opcode);
 
 	switch (opcode)
 	{
