@@ -2,10 +2,17 @@ set(SRCS
             main.cpp
 			Codegen.cpp
 			CodeBlock.cpp
+			Instruction.cpp
+			Mov.cpp
+			Decode.cpp
             )
 set(HEADERS
             Codegen.h
 			CodeBlock.h
+			Instruction.h
+			Mov.h
+			Instructions.h
+			Decode.h
             )
 			
 create_directory_groups(${SRCS} ${HEADERS})

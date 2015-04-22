@@ -16,10 +16,13 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Object/ObjectFile.h"
 #include <Target/ARM/MCTargetDesc/ARMMCTargetDesc.h>
 #include <core/mem_map.h>
 #include <core/arm/skyeye_common/armdefs.h>
 #include <core/arm/dyncom/arm_dyncom_thumb.h>
+#include <fstream>
+#include <iostream>
 
 using namespace llvm;
 using namespace std;
@@ -30,7 +33,11 @@ struct Jit::Private
 {
 	Jit::Private();
 
-	llvm::ExecutionEngine *executionEngine;
+	std::unique_ptr<SectionMemoryManager> memoryManager;
+	std::unique_ptr<RuntimeDyld> dyld;
+	std::unique_ptr<RuntimeDyld::LoadedObjectInfo> object;
+
+	/*llvm::ExecutionEngine *executionEngine;
 	IRBuilder<> *builder;
 	const Target *armTarget;
 	MCSubtargetInfo *armSubtarget;
@@ -46,33 +53,10 @@ struct Jit::Private
 
 	vector<unique_ptr<class JitBlock>> jitBlocks;
 	std::map<int, CompiledBlock> compiledBlocks;
+	*/
 
+	void(*entry)(u32 *regs);
 	bool InterpreterTranslate(struct ARMul_State* cpu, u32 addr);
-};
-
-struct JitBlock
-{
-	Jit::Private *jit;
-
-	JitBlock(Jit::Private *jit);
-	~JitBlock();
-
-	struct Register
-	{
-		Value *value;
-		bool modified;
-	};
-
-	Function *function;
-	std::map<int, Register> registers;
-	Module *module;
-
-	u32 *GetRegisterPtr(int reg);
-	Value *GetConstPtr(void *ptr);
-	Value *ReadRegister(int reg);
-	bool WriteRegister(int reg, Value *value);
-	bool AddInstruction(u32 *addr);
-	void Finalize();
 };
 
 Jit::Jit()
@@ -87,14 +71,35 @@ Jit::Private::Private()
 	InitializeNativeTargetAsmPrinter();
 	InitializeNativeTargetAsmParser();
 
-	LLVMInitializeARMTargetInfo();
-	LLVMInitializeARMTarget();
-	LLVMInitializeARMTargetMC();
-	LLVMInitializeARMAsmPrinter();
-	LLVMInitializeARMAsmParser();
-	LLVMInitializeARMDisassembler();
+	memoryManager = llvm::make_unique<SectionMemoryManager>();
+	dyld = llvm::make_unique<RuntimeDyld>(memoryManager.get());
 
-	auto module = llvm::make_unique<Module>("Module", getGlobalContext());
+	int fd;
+	std::ifstream file("../opt/3dscraft.obj", ios::binary);
+	file.seekg(0, ios::end);
+	auto size = file.tellg();
+	file.seekg(0, ios::beg);
+
+	auto buffer = new char[size];
+	file.read(buffer, size);
+
+	auto loadedObject = object::ObjectFile::createObjectFile(MemoryBufferRef(StringRef(buffer, size), ""));
+	if (!loadedObject)
+	{
+		LOG_CRITICAL(Frontend, "Failed to load file: error %s", loadedObject.getError().message().c_str());
+		__debugbreak();
+	}
+	object = dyld->loadObject(*loadedObject->get());
+	if (dyld->hasError()) __debugbreak();
+
+	dyld->resolveRelocations();
+	dyld->registerEHFrames();
+	memoryManager->finalizeMemory();
+
+	entry = (decltype(entry))dyld->getSymbolAddress("entry");
+	if (!entry) __debugbreak();
+
+	/*auto module = llvm::make_unique<Module>("Module", getGlobalContext());
 	module->setTargetTriple(sys::getProcessTriple() + "-elf");
 	this->module = module.get();
 	std::string errorString;
@@ -123,7 +128,7 @@ Jit::Private::Private()
 	armContext = new MCContext(armAsmInfo, armRegisterInfo, nullptr);
 
 	armDisassembler = armTarget->createMCDisassembler(*armSubtarget, *armContext);
-	if (!armDisassembler) __debugbreak();
+	if (!armDisassembler) __debugbreak();*/
 }
 
 bool Jit::InterpreterTranslate(ARMul_State* state, u32 addr)
@@ -133,158 +138,6 @@ bool Jit::InterpreterTranslate(ARMul_State* state, u32 addr)
 
 bool Jit::Private::InterpreterTranslate(ARMul_State *state, u32 addr)
 {
-	this->state = state;
-
-	//static u32 count = 0;
-	//if (count >= 32) return false;
-	//++count;
-
-	if (state->TFlag) return false;
-
-	CompiledBlock ptr;
-
-	auto firstAddr = addr;
-
-	auto i = compiledBlocks.find(addr);
-	if (i == compiledBlocks.end())
-	{
-		auto jb = new JitBlock(this);
-
-		for (size_t instructionCount = 0;; ++instructionCount)
-		{
-			if (jb->AddInstruction(&addr)) continue;
-			if (instructionCount < 5)
-			{
-				compiledBlocks[firstAddr] = nullptr;
-				delete jb;
-				return false;
-			}
-			auto pc = jb->GetConstPtr(&state->Reg[15]);
-			auto delta = ConstantInt::getIntegerValue(Type::getInt32Ty(getGlobalContext()), APInt(32, 4 * instructionCount));
-			auto add = builder->CreateAdd(builder->CreateLoad(pc), delta);
-			builder->CreateStore(add, pc);
-			verifyFunction(*jb->function);
-			jb->Finalize();
-			//jb->module->dump();
-			executionEngine->finalizeObject();
-			void *f = executionEngine->getPointerToFunction(jb->function);
-
-			//jb->function->dump();
-
-			compiledBlocks[firstAddr] = ptr = (CompiledBlock)f;
-			break;
-		}
-	}
-	else
-	{
-		ptr = i->second;
-	}
-	if (!ptr) return false;
-	ptr();
+	entry(state->Reg);
 	return true;
-}
-
-JitBlock::JitBlock(Jit::Private *jit) : jit(jit)
-{
-	FunctionType *ft = FunctionType::get(Type::getVoidTy(getGlobalContext()), false);
-
-	module = new Module("", getGlobalContext());
-	jit->executionEngine->addModule(unique_ptr<Module>(module));
-	function = Function::Create(ft, Function::ExternalLinkage, "", module);
-	BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "", function);
-	jit->builder->SetInsertPoint(bb);
-}
-
-JitBlock::~JitBlock()
-{
-	function->removeFromParent();
-}
-
-u32 *JitBlock::GetRegisterPtr(int reg)
-{
-	u32 *addr = nullptr;
-	if (reg >= ARM::R0 && reg <= ARM::R12) return &jit->state->Reg[reg - ARM::R0];
-	else if (reg == ARM::SP) return &jit->state->Reg[13];
-	else if (reg == ARM::LR) return &jit->state->Reg[14];
-	return nullptr;
-}
-Value *JitBlock::GetConstPtr(void *ptr)
-{
-	auto bits = sizeof(size_t) * 8;
-	//return Constant::getIntegerValue(Type::getIntNPtrTy(getGlobalContext(), bits), APInt(bits, (uint64_t)ptr));
-	//auto type = Type::getInt32Ty(getGlobalContext());
-	//auto value = new GlobalVariable(*jit->module, type, false,
-	//	GlobalValue::LinkageTypes::InternalLinkage, nullptr, "register");
-	//jit->executionEngine->addGlobalMapping(value, ptr);
-	//return value;
-	return jit->builder->CreateIntToPtr(ConstantInt::getIntegerValue(Type::getIntNTy(getGlobalContext(), bits), APInt(bits, (uint64_t)ptr)),
-		Type::getInt32PtrTy(getGlobalContext()));
-}
-
-Value *JitBlock::ReadRegister(int reg)
-{
-	auto i = registers.find(reg);
-	if (i != registers.end()) return i->second.value;
-
-	auto regPtr = GetRegisterPtr(reg);
-	if (!regPtr) return nullptr;
-
-	auto value = jit->builder->CreateLoad(GetConstPtr(regPtr));
-	registers[reg] = { value, false };
-	return value;
-}
-
-bool JitBlock::WriteRegister(int reg, Value *value)
-{
-	if (!GetRegisterPtr(reg)) return false;
-	registers[reg] = { value, true };
-	return true;
-}
-
-bool JitBlock::AddInstruction(u32 *addr)
-{
-	auto inst = Memory::Read32(*addr & 0xFFFFFFFC);
-
-	MCInst instruction;
-	size_t instructionSize;
-	auto bytes = ArrayRef<uint8_t>((uint8_t *)&inst, 4);
-	auto status = jit->armDisassembler->getInstruction(instruction, instructionSize, bytes, *addr & 0xFFFFFFFC, nulls(), nulls());
-	*addr += instructionSize;
-
-	auto opcode = instruction.getOpcode();
-
-	//LOG_INFO(Core_ARM11, "Status %x, Opcode %x", status, opcode);
-
-	switch (opcode)
-	{
-		case ARM::MOVr:
-		{
-			auto opr0 = instruction.getOperand(0);
-			auto opr1 = instruction.getOperand(1);
-
-			if (!opr1.isReg()) return false;
-
-			auto reg0 = opr0.getReg();
-			auto reg1 = ReadRegister(opr1.getReg());
-			if (!reg1) return false;
-			if (!WriteRegister(reg0, reg1)) return false;
-			break;
-		}
-		default: return false;
-	}
-
-	return true;
-}
-void JitBlock::Finalize()
-{
-	for (auto i : registers)
-	{
-		auto num = i.first;
-		auto reg = i.second;
-		if (!reg.modified) continue;
-
-		jit->builder->CreateStore(reg.value, GetConstPtr(GetRegisterPtr(num)));
-	}
-
-	jit->builder->CreateRetVoid();
 }

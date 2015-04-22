@@ -10,6 +10,8 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/TargetRegistry.h>
+#include "Instruction.h"
+#include "Decode.h"
 
 class Codegen
 {
@@ -18,11 +20,14 @@ public:
 	~Codegen();
 
 	void Run(const char *filename);
+	void RegisterBasicBlock(llvm::BasicBlock *bb, u32 pc);
 
 	// Native
 	std::unique_ptr<llvm::LLVMContext> nativeContext;
 	std::unique_ptr<llvm::Module> module;
 	std::unique_ptr<llvm::IRBuilder<>> irBuilder;
+	std::unique_ptr<llvm::TargetMachine> nativeTarget;
+	std::unique_ptr<llvm::Function> function;
 
 	// Arm
 	std::unique_ptr<llvm::LLVMContext> armContext;
@@ -31,6 +36,29 @@ public:
 	std::unique_ptr<const llvm::MCDisassembler> armDisassembler;
 	std::unique_ptr<const llvm::MCRegisterInfo> armRegisterInfo;
 	std::unique_ptr<const llvm::MCAsmInfo> armAsmInfo;
+	std::unique_ptr<const llvm::MCInstrInfo> armInstrInfo;
+	std::unique_ptr<const llvm::MCInstPrinter> armInstPrinter;
 	std::unique_ptr<llvm::MCContext> armMCContext;
 	llvm::FunctionType *codeBlockFunctionSignature;
+	llvm::Triple nativeTriple;
+
+	Decoder *decoder;
+
+	void WriteFile(const char *filename);
+
+	llvm::Value *registersArgument;
+	llvm::BasicBlock *outOfCodeblock;
+
+	void CreateRegisters();
+	void StoreRegisters();
+
+	bool CanRead(Register reg);
+	bool CanWrite(Register reg);
+
+	llvm::Value *Read(Register reg);
+	llvm::Value *Write(Register reg, llvm::Value *val);
+private:
+	std::vector<std::pair<llvm::BasicBlock *, u32>> blocks;
+	llvm::Value *registers;
+	void TranslateBlocks();
 };

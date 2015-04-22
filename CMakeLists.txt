@@ -247,6 +247,6 @@ include_directories(${CMAKE_BINARY_DIR}/llvm-prefix/src/llvm-build/lib)
 include_directories(${CMAKE_BINARY_DIR}/llvm-prefix/src/llvm-build/lib/Target/ARM)
 add_definitions(${LLVM_DEFINITIONS})
 
-llvm_map_components_to_libnames(llvm_libs Core Support X86 Arm ArmCodeGen ArmAsmParser ArmAsmPrinter ArmDisassembler ExecutionEngine MCJIT BitWriter)
+llvm_map_components_to_libnames(llvm_libs Core Support X86 Arm ArmCodeGen ArmAsmParser ArmAsmPrinter ArmDisassembler ExecutionEngine MCJIT BitWriter ipo)
 
 add_subdirectory(src)
