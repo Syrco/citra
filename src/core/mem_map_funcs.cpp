@@ -272,6 +272,7 @@ void Write16(const VAddr addr, const u16 data) {
 }
 
 void Write32(const VAddr addr, const u32 data) {
+	//if (data == 0x0022ed68 && addr == 0x0ffffe74) __debugbreak();
     Write<u32_le>(addr, data);
 }
 

@@ -84,8 +84,8 @@ Codegen::Codegen() : decoder(new Decoder(this))
 	module = llvm::make_unique<Module>("Module", *nativeContext);
 	module->setTargetTriple(nativeTripleStr);
 	irBuilder = llvm::make_unique<IRBuilder<>>(*nativeContext);
-	Type *arguments = {
-		Type::getInt32PtrTy(*nativeContext)
+	Type *arguments[] = {
+		Type::getInt32PtrTy(*nativeContext), Type::getInt1PtrTy(*nativeContext)
 	};
 	codeBlockFunctionSignature = FunctionType::get(Type::getVoidTy(*nativeContext), arguments, false);
 }
@@ -95,56 +95,64 @@ Codegen::~Codegen()
 
 }
 
-static const size_t TranslateStart = Memory::EXEFS_CODE_VADDR, TranslateSize = 0x25000, TranslateEnd = TranslateStart + TranslateSize;
+struct BinSearch
+{
+	size_t min;
+	size_t mid;
+	size_t max;
+	BinSearch(size_t max) : min(0), mid(max / 2), max(max) { }
+	BinSearch(size_t min, size_t max) : min(min), mid((min + max) / 2), max(max) { }
+	BinSearch l() { return BinSearch(min, mid); }
+	BinSearch r() { return BinSearch(mid, max); }
+};
+
+static const size_t TranslateSize = 0x24000;
+//static const size_t TranslateSize = 0x40;
+//static const size_t TranslateSize = 0x13AD0;
+//static const size_t TranslateSize = BinSearch(0x25000).r().r().r().r().l().l().r().r().l().l().l().l().mid;
+//static const size_t TranslateSize = BinSearch(0x25000).r().r().r().r().l().l().r().r().l().l().l().l().mid + 4;
+
+
+static const size_t TranslateStart = Memory::EXEFS_CODE_VADDR;
+static const size_t TranslateEnd = TranslateStart + TranslateSize;
 
 void Codegen::Run(const char *filename)
 {
-	auto switchArrSize = TranslateSize / 4;
-	auto switchArrMemberType = irBuilder->getInt8PtrTy();
-	auto switchArrType = ArrayType::get(switchArrMemberType, switchArrSize);
+	GenerateEntryFunction();
+	GeneratePresentFunction();
 
-	function.reset(Function::Create(codeBlockFunctionSignature, GlobalValue::LinkageTypes::ExternalLinkage, "entry", module.get()));
+	WriteFile(filename);
+}
+
+void Codegen::GenerateEntryFunction()
+{
+	function.reset(Function::Create(codeBlockFunctionSignature, GlobalValue::LinkageTypes::ExternalLinkage, "Run", module.get()));
 	registersArgument = &function->getArgumentList().front();
-	//Value *arguments[] = { registers };
-	//ArrayRef<Value *> argumentsRef(arguments);
+	flagsArgument = function->getArgumentList().getNext(registersArgument);
 
 	auto switchBasicBlock = BasicBlock::Create(*nativeContext, "switch", function.get());
 	auto exitBasicBlock = BasicBlock::Create(*nativeContext, "exit", function.get());
-	auto notHigher = BasicBlock::Create(*nativeContext, "notHigher", function.get());
-	auto notNull = BasicBlock::Create(*nativeContext, "notNull", function.get());
+	inToCodeBlock = BasicBlock::Create(*nativeContext, "notNull", function.get());
 	outOfCodeblock = BasicBlock::Create(*nativeContext, "outOfCodeblock", function.get());
 
-	irBuilder->SetInsertPoint(notNull);
+	irBuilder->SetInsertPoint(inToCodeBlock);
 	CreateRegisters();
 	TranslateBlocks();
+	GenerateSwitchArray();
 
-	auto switchLocalArr = new Constant*[switchArrSize];
-	std::fill(switchLocalArr, switchLocalArr + switchArrSize, ConstantPointerNull::get(switchArrMemberType));
-	for (auto block : blocks)
-	{
-		switchLocalArr[(block.second - TranslateStart) / 4] = BlockAddress::get(function.get(), block.first);
-	}
-	auto switchArr = ConstantArray::get(switchArrType, ArrayRef<Constant*>(switchLocalArr, switchLocalArr + switchArrSize));
-	auto switchArrGV = new GlobalVariable(*module, switchArr->getType(), true, GlobalValue::InternalLinkage, switchArr, "SwitchArray");
+	Value *addr;
 
 	irBuilder->SetInsertPoint(switchBasicBlock);
 	auto pc = irBuilder->CreateLoad(irBuilder->CreateConstGEP1_32(registersArgument, 15));
-	auto pcSubStart = irBuilder->CreateSub(pc, irBuilder->getInt32(TranslateStart));
-	auto pcSubStartDiv4 = irBuilder->CreateAShr(pcSubStart, 2, "");
-	auto higher = irBuilder->CreateICmpUGE(pcSubStartDiv4, irBuilder->getInt32(TranslateEnd / 4));
-	auto iff = irBuilder->CreateCondBr(higher, exitBasicBlock, notHigher);
+	GenerateSwitchArrayIf(pc, function.get(),
+		switchBasicBlock, inToCodeBlock, exitBasicBlock,
+		&addr);
 
-	irBuilder->SetInsertPoint(notHigher);
-	Value *values[] = { irBuilder->getInt32(0), pcSubStartDiv4 };
-	auto addr = irBuilder->CreateLoad(irBuilder->CreateGEP(switchArrGV, values));
-	auto cmp = irBuilder->CreateICmpNE(addr, ConstantPointerNull::get(switchArrMemberType));
-	auto iff2 = irBuilder->CreateCondBr(cmp, notNull, exitBasicBlock);
-
-	irBuilder->SetInsertPoint(notNull);
-	auto indirectBr = irBuilder->CreateIndirectBr(addr, switchArrSize);
-	for (auto block : blocks)
+	irBuilder->SetInsertPoint(inToCodeBlock);
+	auto indirectBr = irBuilder->CreateIndirectBr(addr, switchArraySize);
+	for (auto p : blocks)
 	{
-		indirectBr->addDestination(block.first);
+		indirectBr->addDestination(p.second->loadBlock.get());
 	}
 
 	irBuilder->SetInsertPoint(outOfCodeblock);
@@ -153,37 +161,87 @@ void Codegen::Run(const char *filename)
 
 	irBuilder->SetInsertPoint(exitBasicBlock);
 	irBuilder->CreateRetVoid();
+}
 
-	raw_os_ostream os(std::cout);
+void Codegen::GeneratePresentFunction()
+{
+	Type *arguments = { irBuilder->getInt32Ty() };
+	auto presentFunctionSignature = FunctionType::get(irBuilder->getInt1Ty(), arguments, false);
+	auto presentFunction = Function::Create(presentFunctionSignature, GlobalValue::LinkageTypes::ExternalLinkage, "Present", module.get());
+	auto pc = &presentFunction->getArgumentList().front();
 
-	/*if (verifyModule(*module, &os))
+	Value *addr;
+	auto switchBasicBlock = BasicBlock::Create(*nativeContext, "switch", presentFunction);
+	auto trueBasicBlock = BasicBlock::Create(*nativeContext, "true", presentFunction);
+	auto falseBasicBlock = BasicBlock::Create(*nativeContext, "false", presentFunction);
+
+	irBuilder->SetInsertPoint(switchBasicBlock);
+	GenerateSwitchArrayIf(pc, presentFunction,
+		switchBasicBlock, trueBasicBlock, falseBasicBlock,
+		&addr);
+
+	irBuilder->SetInsertPoint(trueBasicBlock);
+	irBuilder->CreateRet(irBuilder->getInt1(true));
+
+	irBuilder->SetInsertPoint(falseBasicBlock);
+	irBuilder->CreateRet(irBuilder->getInt1(false));
+}
+
+void Codegen::GenerateSwitchArray()
+{
+	switchArraySize = TranslateSize / 4;
+	switchArrayMemberType = irBuilder->getInt8PtrTy();
+	auto switchArrType = ArrayType::get(switchArrayMemberType, switchArraySize);
+	switchArrayNull = ConstantPointerNull::get(switchArrayMemberType);
+	auto switchLocalArr = new Constant*[switchArraySize];
+	std::fill(switchLocalArr, switchLocalArr + switchArraySize, switchArrayNull);
+	for (auto p : blocks)
 	{
-		os.flush();
-		std::cin.get();
-	}*/
+		switchLocalArr[(p.first - TranslateStart) / 4] = BlockAddress::get(function.get(), p.second->loadBlock.get());
+	}
+	auto switchArrayConst = ConstantArray::get(switchArrType, ArrayRef<Constant*>(switchLocalArr, switchLocalArr + switchArraySize));
+	delete switchLocalArr;
+	switchArray = new GlobalVariable(*module, switchArrayConst->getType(), true, GlobalValue::InternalLinkage, switchArrayConst, "SwitchArray");
+}
 
-	/*{
-		std::error_code error;
-		raw_fd_ostream file(string(filename) + ".ll", error, sys::fs::OpenFlags::F_RW);
+void Codegen::GenerateSwitchArrayIf(llvm::Value *offset, llvm::Function *function,
+	llvm::BasicBlock *enterBasicBlock, llvm::BasicBlock *exitTrueBasicBlock, llvm::BasicBlock *exitFalseBasicBlock,
+	llvm::Value **pointer)
+{
+	auto bb0 = enterBasicBlock;                                     // if(pc <)
+	auto bb1 = BasicBlock::Create(*nativeContext, "bb1", function); //  if(value != 0)
+	auto bb2 = exitTrueBasicBlock;									//   then
+	auto bb3 = exitFalseBasicBlock;									// else
 
-		if (file.has_error())
-		{
-			LOG_CRITICAL(Frontend, "Failed to write bitcode file: error %s", error.message().c_str());
-		}
+	irBuilder->SetInsertPoint(bb0);
+	auto pc = offset;
+	auto pcSubStart = irBuilder->CreateSub(pc, irBuilder->getInt32(TranslateStart));
+	auto pcSubStartDiv4 = irBuilder->CreateAShr(pcSubStart, 2);
+	auto higher = irBuilder->CreateICmpUGE(pcSubStartDiv4, irBuilder->getInt32(TranslateSize / 4));
+	auto iff = irBuilder->CreateCondBr(higher, bb3, bb1);
 
-		module->print(file, nullptr);
-	}*/
+	irBuilder->SetInsertPoint(bb1);
+	Value *values[] = { irBuilder->getInt32(0), pcSubStartDiv4 };
+	auto addr = irBuilder->CreateLoad(irBuilder->CreateGEP(switchArray, values));
+	auto cmp = irBuilder->CreateICmpNE(addr, switchArrayNull);
+	auto iff2 = irBuilder->CreateCondBr(cmp, bb2, bb3);
 
-	WriteFile(filename);
+	*pointer = addr;
+}
 
-	/*passManager.add(createVerifierPass());
-	passManager.add(createBasicAliasAnalysisPass());
-	passManager.add(createInstructionCombiningPass());
-	passManager.add(createReassociatePass());
-	passManager.add(createGVNPass());
-	passManager.add(createCFGSimplificationPass());
-	passManager.add(createPromoteMemoryToRegisterPass());*/
+void Codegen::WriteLL(const char *filename)
+{
+	LOG_INFO(Frontend, "Writing .ll");
+	std::error_code error;
+	raw_fd_ostream file(string(filename) + ".ll", error, sys::fs::OpenFlags::F_RW);
 
+	if (file.has_error())
+	{
+		LOG_CRITICAL(Frontend, "Failed to write bitcode file: error %s", error.message().c_str());
+	}
+
+	module->print(file, nullptr);
+	LOG_INFO(Frontend, "Done");
 }
 
 void Codegen::WriteFile(const char *filename)
@@ -191,6 +249,18 @@ void Codegen::WriteFile(const char *filename)
 	PassManager passManager;
 	FunctionPassManager functionPassManager(module.get());
 	PassManagerBuilder passManagerBuilder;
+
+	//auto bb = blocks[0x1003ac]->basicBlock.get();
+	//bb->dump();
+
+	WriteLL(filename);
+	raw_os_ostream os(std::cout);
+	if (verifyModule(*module, &os))
+	{
+		os.flush();
+		//WriteLL(filename);
+		std::cin.get();
+	}
 
 	module->setDataLayout(nativeTarget->getSubtargetImpl()->getDataLayout());
 
@@ -236,34 +306,72 @@ void Codegen::WriteFile(const char *filename)
 	file.flush();
 }
 
-void Codegen::RegisterBasicBlock(llvm::BasicBlock *bb, u32 pc)
-{
-	blocks.emplace_back(bb, pc);
-}
-
 void Codegen::TranslateBlocks()
 {
 	size_t largestSize = 0, largestPc = 0;
 	size_t translated = 0;
-	for (u32 i = TranslateStart; i < TranslateEnd;)
+	CodeBlock *lastBlock = nullptr;
+	size_t linked = 0, terminated = 0, jumpFailed = 0;
+	for (u32 i = TranslateStart; i < TranslateEnd; i += 4)
 	{
-		CodeBlock block(this);
-		bool generated;
-		auto firstPc = i;
-		i = block.Run(i, TranslateEnd, &generated);
-		if (generated)
+		auto codeBlock = new CodeBlock(this, i);
+		if (codeBlock->AddInstruction())
 		{
-			translated += block.instructionCount;
-			if (block.instructionCount > largestSize)
+			if (lastBlock && !lastBlock->jumpAddress)
 			{
-				largestSize = block.instructionCount;
-				largestPc = firstPc;
+				lastBlock->jumpAddress = i;
 			}
+			blocks.insert(make_pair(i, codeBlock));
+			++translated;
+		}
+		else
+		{
+			if (lastBlock)
+			{
+				if (lastBlock->lastBlock->getTerminator()) __debugbreak();
+			}
+			delete codeBlock;
+			codeBlock = nullptr;
+		}
+		lastBlock = codeBlock;
+	}
+
+	for (auto p : blocks)
+	{
+		auto block = p.second;
+		if (!block->jumpAddress) continue;
+		auto i = blocks.find(block->jumpAddress);
+		if (i != blocks.end())
+		{
+			CodeBlock::Link(block, i->second);
+			++linked;
+		}
+	}
+	for (auto p : blocks)
+	{
+		auto block = p.second;
+		if (!block->jumpAddress) continue;
+		auto i = blocks.find(block->jumpAddress);
+		if (i == blocks.end())
+		{
+			block->JumpFailed();
+			++jumpFailed;
+		}
+	}
+	for (auto block : blocks)
+	{
+		if (!block.second->jumpAddress)
+		{
+			block.second->Terminate();
+			++terminated;
 		}
 	}
 
-	cout << "Translated " << dec << translated << " of " << (TranslateSize / 4) << " = " << (100.0 * translated / (TranslateSize / 4)) << "%" << endl;
-	cout << "Largest block with " << largestSize << " instruction at " << hex << largestPc << endl;
+	cout << "Translated " << hex << translated << " of " << (TranslateSize / 4) << " = " << dec << (100.0 * translated / (TranslateSize / 4)) << "%" << endl;
+	cout << "Total " << blocks.size() << " blocks" << endl;
+	cout << linked <<     " linked     blocks = " << (100.0 * linked / blocks.size()) << "%" << endl;
+	cout << terminated << " terminated blocks = " << (100.0 * terminated / blocks.size()) << "%" << endl;
+	cout << jumpFailed << " jumpFailed blocks = " << (100.0 * jumpFailed / blocks.size()) << "%" << endl;
 }
 
 void Codegen::CreateRegisters()
@@ -297,11 +405,21 @@ bool Codegen::CanWrite(Register reg)
 	return reg <= Register::SP || reg == Register::LR;
 }
 
+llvm::Type *Codegen::RegType(Register reg)
+{
+	return reg < Register::N ? irBuilder->getInt32Ty() : irBuilder->getInt1Ty();
+}
+Value *Codegen::RegGEP(Register reg)
+{
+	auto src = reg < Register::N ? registersArgument : flagsArgument;
+	auto offset = reg < Register::N ? (unsigned)reg : (((unsigned)reg - (unsigned)Register::N) * 4);
+	return irBuilder->CreateConstGEP1_32(src, offset);
+}
 Value *Codegen::Read(Register reg)
 {
-	return irBuilder->CreateLoad(irBuilder->CreateConstGEP1_32(registersArgument, (unsigned)reg));
+	return irBuilder->CreateLoad(RegGEP(reg));
 }
 Value *Codegen::Write(Register reg, Value *val)
 {
-	return irBuilder->CreateStore(val, irBuilder->CreateConstGEP1_32(registersArgument, (unsigned)reg));
+	return irBuilder->CreateStore(val, RegGEP(reg));
 }

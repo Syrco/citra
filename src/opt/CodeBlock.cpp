@@ -5,6 +5,7 @@
 #include <llvm/MC/MCInstrInfo.h>
 #include <iostream>
 #include <llvm/Support/raw_os_ostream.h>
+#include <sstream>
 #include "CodeBlock.h"
 #include "Codegen.h"
 #include "core/mem_map.h"
@@ -13,64 +14,140 @@
 using namespace llvm;
 using namespace std;
 
-CodeBlock::CodeBlock(Codegen *codegen) : codegen(codegen), instructionCount(0)
+CodeBlock::CodeBlock(Codegen *codegen, u32 pc) : codegen(codegen), pc(pc)
 {
-	//auto x = Instructions::Read(0xe1a0400e);
-	//__debugbreak();
+	fill(registers.begin(), registers.end(), nullptr);
+	fill(registersPhi.begin(), registersPhi.end(), nullptr);
 }
 
 CodeBlock::~CodeBlock()
 {
 }
 
-u32 CodeBlock::Run(u32 start, u32 end, bool *generated)
+BasicBlock *CodeBlock::NewInstructionBasicBlock(const char *str)
 {
-	this->pc = start;
-
-	u32 pc;
-	for (pc = start; pc < end; pc += 4)
-	{
-		if ((pc % 0x10000) == 0) cout << hex << pc << endl;
-		if (AddInstruction(pc))
-		{
-			++instructionCount;
-			continue;
-		}
-		*generated = instructionCount >= 1;
-		if (*generated)
-		{
-			codegen->Write(Register::PC, codegen->irBuilder->getInt32(pc));
-			codegen->irBuilder->CreateBr(codegen->outOfCodeblock);
-		}
-
-
-		return pc + 4;
-	}
-
-	return pc;
+	stringstream ss;
+	ss << "block_" << hex << pc << "_" << str;
+	return BasicBlock::Create(*codegen->nativeContext, ss.str(), codegen->function.get());
 }
-
-bool CodeBlock::AddInstruction(u32 pc)
+bool CodeBlock::AddInstruction()
 {
 	auto bytes = Memory::Read32(pc);
-	if (bytes == 0)
-	{
-		return false;
-	}
+	if (bytes == 0) return false;
 
 	auto instr = Instructions::Read(bytes);
 	if (!instr) return false;
 	if (!instr->CanCodegen(codegen)) return false;
 
-	auto basicBlock = BasicBlock::Create(*codegen->nativeContext, "", codegen->function.get());
+	stringstream ss;
+	ss << "block_" << hex << pc;
+	basicBlock.reset(BasicBlock::Create(*codegen->nativeContext, ss.str(), codegen->function.get()));
+	ss << "_loadblock";
+	loadBlock.reset(BasicBlock::Create(*codegen->nativeContext, ss.str(), codegen->function.get()));
 
-	if (lastBlock) codegen->irBuilder->CreateBr(basicBlock);
+	codegen->irBuilder->SetInsertPoint(loadBlock.get());
+	codegen->irBuilder->CreateBr(basicBlock.get());
 
-	codegen->irBuilder->SetInsertPoint(basicBlock);
-	instr->DoCodegen(codegen);
-
-	lastBlock = basicBlock;
-	codegen->RegisterBasicBlock(basicBlock, pc);
+	codegen->irBuilder->SetInsertPoint(basicBlock.get());
+	instr->DoCodegen(codegen, this);
+	lastBlock = codegen->irBuilder->GetInsertBlock();
 
 	return true;
+}
+llvm::Value *CodeBlock::Read(Register reg)
+{
+	if (!registers[(int)reg])
+	{
+		auto insertPoint = codegen->irBuilder->saveIP();
+
+		codegen->irBuilder->SetInsertPoint(loadBlock.get(), loadBlock->begin());
+		auto load = codegen->Read(reg);
+
+		codegen->irBuilder->SetInsertPoint(basicBlock.get(), basicBlock->begin());
+		stringstream ss;
+		ss << "r" << (int)reg << "_";
+		auto phi = codegen->irBuilder->CreatePHI(codegen->RegType(reg), prevs.size() + 1, ss.str().c_str());
+		codegen->irBuilder->restoreIP(insertPoint);
+
+		registers[(int)reg] = phi;
+		registersPhi[(int)reg] = phi;
+		phi->addIncoming(load, loadBlock.get());
+		for (auto prev : prevs)
+		{
+			if (phi->getType() != prev->Read(reg)->getType())
+			{
+				prev->Read(reg)->dump();
+				phi->dump();
+			}
+			phi->addIncoming(prev->Read(reg), prev->lastBlock);
+		}
+	}
+	return registers[(int)reg];
+}
+llvm::Value *CodeBlock::Write(Register reg, llvm::Value *value)
+{
+	return registers[(int)reg] = value;
+}
+void CodeBlock::Link(CodeBlock *prev, CodeBlock *next)
+{
+	auto codegen = prev->codegen;
+	next->prevs.push_back(prev);
+	next->nexts.push_back(next);
+
+	for (auto i = 0; i < prev->registers.size(); ++i)
+	{
+		auto prevR = prev->registers[i];
+		auto nextR = next->registers[i];
+		if (!nextR)
+		{
+			next->Read((Register)i);
+		}
+		else
+		{
+			if (next->registersPhi[i])
+				next->registersPhi[i]->addIncoming(prev->Read((Register)i), prev->lastBlock);
+		}
+	}
+
+	if (prev->lastBlock->getTerminator()) __debugbreak();
+	codegen->irBuilder->SetInsertPoint(prev->lastBlock);
+	codegen->irBuilder->CreateBr(next->basicBlock.get());
+}
+void CodeBlock::Terminate()
+{
+	TerminateAt(pc + 4);
+}
+void CodeBlock::JumpFailed()
+{
+	TerminateAt(jumpAddress);
+}
+void CodeBlock::Spill(int reg)
+{
+	//if (this->pc == 0x114d2c && reg == 14) __debugbreak();
+	auto val = registers[reg];
+	if (!val) return;
+	if (val == registersPhi[reg])
+	{
+		for (auto prev : prevs)
+		{
+			prev->Spill(reg);
+		}
+	}
+	else
+	{
+		codegen->irBuilder->SetInsertPoint(lastBlock, --lastBlock->end());
+		codegen->Write((Register)reg, val);
+	}
+}
+void CodeBlock::TerminateAt(u32 pc)
+{
+	if (lastBlock->getTerminator()) __debugbreak();
+	codegen->irBuilder->SetInsertPoint(lastBlock);
+	codegen->Write(Register::PC, codegen->irBuilder->getInt32(pc));
+	codegen->irBuilder->CreateBr(codegen->outOfCodeblock);
+
+	for (auto i = 0; i < registers.size(); ++i)
+	{
+		Spill(i);
+	}
 }

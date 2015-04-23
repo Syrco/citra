@@ -22,6 +22,28 @@ public:
 	void Run(const char *filename);
 	void RegisterBasicBlock(llvm::BasicBlock *bb, u32 pc);
 
+	void GenerateEntryFunction();
+	void GeneratePresentFunction();
+	void GenerateSwitchArray();
+	void GenerateSwitchArrayIf(llvm::Value *offset, llvm::Function *function,
+		llvm::BasicBlock *enterBasicBlock, llvm::BasicBlock *exitTrueBasicBlock, llvm::BasicBlock *exitFalseBasicBlock,
+		llvm::Value **pointer);
+
+	void WriteFile(const char *filename);
+	void WriteLL(const char *filename);
+
+	void CreateRegisters();
+	void StoreRegisters();
+
+	bool CanRead(Register reg);
+	bool CanWrite(Register reg);
+
+	llvm::Type *RegType(Register reg);
+	llvm::Value *RegGEP(Register reg);
+	llvm::Value *Read(Register reg);
+	llvm::Value *Write(Register reg, llvm::Value *val);
+
+
 	// Native
 	std::unique_ptr<llvm::LLVMContext> nativeContext;
 	std::unique_ptr<llvm::Module> module;
@@ -44,21 +66,16 @@ public:
 
 	Decoder *decoder;
 
-	void WriteFile(const char *filename);
+	llvm::Argument *registersArgument, *flagsArgument;
+	llvm::BasicBlock *outOfCodeblock, *inToCodeBlock;
 
-	llvm::Value *registersArgument;
-	llvm::BasicBlock *outOfCodeblock;
-
-	void CreateRegisters();
-	void StoreRegisters();
-
-	bool CanRead(Register reg);
-	bool CanWrite(Register reg);
-
-	llvm::Value *Read(Register reg);
-	llvm::Value *Write(Register reg, llvm::Value *val);
+	size_t switchArraySize;
+	llvm::Value *switchArray;
+	llvm::PointerType *switchArrayMemberType;
+	llvm::Constant *switchArrayNull;
 private:
-	std::vector<std::pair<llvm::BasicBlock *, u32>> blocks;
+	std::map<u32, CodeBlock *> blocks;
+	//std::vector<std::pair<llvm::BasicBlock *, u32>> blocks;
 	llvm::Value *registers;
 	void TranslateBlocks();
 };

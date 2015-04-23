@@ -3544,7 +3544,11 @@ static void insert_bb(unsigned int addr, int start) {
     CreamCache[addr] = start;
 }
 
+#include <fstream>
+#include <iomanip>
+
 static int find_bb(unsigned int addr, int& start) {
+	if (addr >= 0x124000) __debugbreak();
     int ret = -1;
     bb_map::const_iterator it = CreamCache.find(addr);
     if (it != CreamCache.end()) {
@@ -3676,6 +3680,10 @@ translated:
         if ((phys_addr & 0xfff) == 0) {
             inst_base->br = END_OF_PAGE;
         }
+		else if (g_jit->CanRun(phys_addr & 0xFFFFFFFC))
+		{
+			inst_base->br = END_OF_PAGE;
+		}
         ret = inst_base->br;
     };
     insert_bb(pc_start, bb_start);
@@ -3694,33 +3702,41 @@ static int clz(unsigned int x) {
     return n;
 }
 
+//#define INSTRUMENT_WRITE_PC(newval) \
+	do {auto oldval = cpu->Reg[15]; auto newvval = (newval); if(newvval == 0x114db8) __debugbreak(); cpu->Reg[15] = (newvval); cpu->Reg[15]; } while(0)
+//#define INSTRUMENT_DISPATCH do { if(cpu->Reg[15] == 0x114db8) __debugbreak(); goto DISPATCH; } while(0)
+//#define INSTRUMENT_PC_WRITTEN if(cpu->Reg[15] == 0x114db8) __debugbreak();
+#define INSTRUMENT_WRITE_PC(newval) cpu->Reg[15] = (newval)
+#define INSTRUMENT_DISPATCH goto DISPATCH
+#define INSTRUMENT_PC_WRITTEN
+
 unsigned InterpreterMainLoop(ARMul_State* state) {
-    Common::Profiling::ScopeTimer timer_execute(profile_execute);
+	Common::Profiling::ScopeTimer timer_execute(profile_execute);
 
 	if (!g_jit) g_jit = new Jit();
 
-    #undef RM
-    #undef RS
+	#undef RM
+	#undef RS
 
-    #define CRn             inst_cream->crn
-    #define OPCODE_1        inst_cream->opcode_1
-    #define OPCODE_2        inst_cream->opcode_2
-    #define CRm             inst_cream->crm
-    #define RD              cpu->Reg[inst_cream->Rd]
-    #define RD2             cpu->Reg[inst_cream->Rd + 1]
-    #define RN              cpu->Reg[inst_cream->Rn]
-    #define RM              cpu->Reg[inst_cream->Rm]
-    #define RS              cpu->Reg[inst_cream->Rs]
-    #define RDHI            cpu->Reg[inst_cream->RdHi]
-    #define RDLO            cpu->Reg[inst_cream->RdLo]
-    #define LINK_RTN_ADDR   (cpu->Reg[14] = cpu->Reg[15] + 4)
-    #define SET_PC          (cpu->Reg[15] = cpu->Reg[15] + 8 + inst_cream->signed_immed_24)
-    #define SHIFTER_OPERAND inst_cream->shtop_func(cpu, inst_cream->shifter_operand)
+	#define CRn             inst_cream->crn
+	#define OPCODE_1        inst_cream->opcode_1
+	#define OPCODE_2        inst_cream->opcode_2
+	#define CRm             inst_cream->crm
+	#define RD              cpu->Reg[inst_cream->Rd]
+	#define RD2             cpu->Reg[inst_cream->Rd + 1]
+	#define RN              cpu->Reg[inst_cream->Rn]
+	#define RM              cpu->Reg[inst_cream->Rm]
+	#define RS              cpu->Reg[inst_cream->Rs]
+	#define RDHI            cpu->Reg[inst_cream->RdHi]
+	#define RDLO            cpu->Reg[inst_cream->RdLo]
+	#define LINK_RTN_ADDR   (cpu->Reg[14] = cpu->Reg[15] + 4)
+	#define SET_PC          INSTRUMENT_WRITE_PC(cpu->Reg[15] + 8 + inst_cream->signed_immed_24);
+	#define SHIFTER_OPERAND inst_cream->shtop_func(cpu, inst_cream->shifter_operand)
 
-    #define FETCH_INST if (inst_base->br != NON_BRANCH) goto DISPATCH; \
-                       inst_base = (arm_inst *)&inst_buf[ptr]
+	#define FETCH_INST if (inst_base->br != NON_BRANCH) INSTRUMENT_DISPATCH; \
+						   inst_base = (arm_inst *)&inst_buf[ptr]
 
-    #define INC_PC(l) ptr += sizeof(arm_inst) + l
+	#define INC_PC(l) do { ptr += sizeof(arm_inst) + l; INSTRUMENT_PC_WRITTEN; } while(0)
 
 // GCC and Clang have a C++ extension to support a lookup table of labels. Otherwise, fallback to a
 // clunky switch statement.
@@ -3928,7 +3944,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
     case 191: goto BL_1_THUMB ; \
     case 192: goto BL_2_THUMB ; \
     case 193: goto BLX_1_THUMB ; \
-    case 194: goto DISPATCH; \
+    case 194: INSTRUMENT_DISPATCH; \
     case 195: goto INIT_INST_LENGTH; \
     case 196: goto END; \
     }
@@ -3954,7 +3970,8 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
     #define PC (cpu->Reg[15])
     #define CHECK_EXT_INT if (!cpu->NirqSig && !(cpu->Cpsr & 0x80)) goto END;
 
-    ARMul_State* cpu = state;
+	ARMul_State* cpu = state;
+	//if (cpu->Reg[15] == 0x114db8) __debugbreak();
 
     // GCC and Clang have a C++ extension to support a lookup table of labels. Otherwise, fallback
     // to a clunky switch statement.
@@ -4000,6 +4017,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
         }
 
+		volatile auto oldr15 = cpu->Reg[15];
         if (cpu->TFlag)
             cpu->Reg[15] &= 0xfffffffe;
         else
@@ -4007,9 +4025,36 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
 
         phys_addr = cpu->Reg[15];
 
+		/*static std::ofstream runRecord("run.txt");
+		if (!runRecord) __debugbreak();
+		static size_t opcodes = 0;
+		char buf[10];
+		for (auto i = 0; i < 16; ++i)
+		{
+			snprintf(buf, 10, "%08x ", cpu->Reg[i]);
+			runRecord << buf;
+		}
+		runRecord << (cpu->NFlag ? "N" : " ");
+		runRecord << (cpu->ZFlag ? "Z" : " ");
+		runRecord << (cpu->CFlag ? "C" : " ");
+		runRecord << (cpu->VFlag ? "V" : " ");
+		runRecord << "\n";
+		++opcodes;
+		if (opcodes > 4000000)
+		{
+			runRecord.flush();
+			runRecord.close();
+			_exit(0);
+		}*/
+
+		//if (cpu->Reg[14] == 0x0022ed68) __debugbreak();
+		//if (cpu->Reg[15] == 0x114db8) __debugbreak();
 		if (find_bb(cpu->Reg[15], ptr) == -1)
 		{
-			g_jit->InterpreterTranslate(cpu, phys_addr);
+			g_jit->Run(cpu);
+			//if (cpu->Reg[15] >= 0x124000) __debugbreak();
+			//if (cpu->Reg[14] == 0x0022ed68) __debugbreak();
+			//if (cpu->Reg[15] == 0x114db8) __debugbreak();
 
 			if (cpu->TFlag)
 				cpu->Reg[15] &= 0xfffffffe;
@@ -4049,7 +4094,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(adc_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4084,7 +4129,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(add_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4112,7 +4157,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(and_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4129,11 +4174,11 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
             SET_PC;
             INC_PC(sizeof(bbl_inst));
-            goto DISPATCH;
+            INSTRUMENT_DISPATCH;
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
         INC_PC(sizeof(bbl_inst));
-        goto DISPATCH;
+        INSTRUMENT_DISPATCH;
     }
     BIC_INST:
     {
@@ -4158,7 +4203,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(bic_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4186,7 +4231,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
                 cpu->Reg[14] = (cpu->Reg[15] + GET_INST_SIZE(cpu));
                 if(cpu->TFlag)
                     cpu->Reg[14] |= 0x1;
-                cpu->Reg[15] = cpu->Reg[inst_cream->val.Rm] & 0xfffffffe;
+				INSTRUMENT_WRITE_PC(cpu->Reg[inst_cream->val.Rm] & 0xfffffffe);
                 cpu->TFlag = cpu->Reg[inst_cream->val.Rm] & 0x1;
             } else {
                 cpu->Reg[14] = (cpu->Reg[15] + GET_INST_SIZE(cpu));
@@ -4194,14 +4239,14 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
                 int signed_int = inst_cream->val.signed_immed_24;
                 signed_int = (signed_int & 0x800000) ? (0x3F000000 | signed_int) : signed_int;
                 signed_int = signed_int << 2;
-                cpu->Reg[15] = cpu->Reg[15] + 8 + signed_int + (BIT(inst, 24) << 1);
+				INSTRUMENT_WRITE_PC(cpu->Reg[15] + 8 + signed_int + (BIT(inst, 24) << 1));
             }
             INC_PC(sizeof(blx_inst));
-            goto DISPATCH;
+            INSTRUMENT_DISPATCH;
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
         INC_PC(sizeof(blx_inst));
-        goto DISPATCH;
+        INSTRUMENT_DISPATCH;
     }
 
     BX_INST:
@@ -4221,15 +4266,20 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             if (inst_cream->Rm == 15)
                 LOG_WARNING(Core_ARM11, "BX at pc %x: use of Rm = R15 is discouraged", cpu->Reg[15]);
 
-            cpu->TFlag = cpu->Reg[inst_cream->Rm] & 0x1;
-            cpu->Reg[15] = cpu->Reg[inst_cream->Rm] & 0xfffffffe;
+			cpu->TFlag = cpu->Reg[inst_cream->Rm] & 0x1;
+			if ((cpu->Reg[inst_cream->Rm] & 0xfffffffe) >= 0x124000)
+			{
+				//run.flush();
+				__debugbreak();
+			}
+			INSTRUMENT_WRITE_PC(cpu->Reg[inst_cream->Rm] & 0xfffffffe);
             INC_PC(sizeof(bx_inst));
-            goto DISPATCH;
+            INSTRUMENT_DISPATCH;
         }
 
         cpu->Reg[15] += GET_INST_SIZE(cpu);
         INC_PC(sizeof(bx_inst));
-        goto DISPATCH;
+        INSTRUMENT_DISPATCH;
     }
 
     CDP_INST:
@@ -4348,7 +4398,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             RD = SHIFTER_OPERAND;
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(mov_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4380,7 +4430,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(eor_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4456,12 +4506,12 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
                     LOAD_NZCVT;
                 }
 
-                cpu->Reg[15] = ReadMemory32(cpu, addr);
+				INSTRUMENT_WRITE_PC(ReadMemory32(cpu, addr));
             }
 
             if (BIT(inst, 15)) {
                 INC_PC(sizeof(ldst_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4498,9 +4548,10 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
         if (BITS(inst_cream->inst, 12, 15) == 15) {
             // For armv5t, should enter thumb when bits[0] is non-zero.
             cpu->TFlag = value & 0x1;
-            cpu->Reg[15] &= 0xFFFFFFFE;
+			cpu->Reg[15] &= 0xFFFFFFFE;
+			if (cpu->Reg[15] >= 0x124000) __debugbreak();
             INC_PC(sizeof(ldst_inst));
-            goto DISPATCH;
+            INSTRUMENT_DISPATCH;
         }
 
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4520,9 +4571,10 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             if (BITS(inst_cream->inst, 12, 15) == 15) {
                 // For armv5t, should enter thumb when bits[0] is non-zero.
                 cpu->TFlag = value & 0x1;
-                cpu->Reg[15] &= 0xFFFFFFFE;
+				cpu->Reg[15] &= 0xFFFFFFFE;
+				if (cpu->Reg[15] >= 0x124000) __debugbreak();
                 INC_PC(sizeof(ldst_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4564,7 +4616,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
 
             if (BITS(inst_cream->inst, 12, 15) == 15) {
                 INC_PC(sizeof(ldst_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4582,7 +4634,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
 
             if (BITS(inst_cream->inst, 12, 15) == 15) {
                 INC_PC(sizeof(ldst_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4622,7 +4674,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             RD = ReadMemory32(cpu, read_addr);
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(generic_arm_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4642,7 +4694,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             RD = Memory::Read8(read_addr);
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(generic_arm_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4662,7 +4714,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             RD = ReadMemory16(cpu, read_addr);
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(generic_arm_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4684,7 +4736,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
 
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(generic_arm_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4701,7 +4753,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             cpu->Reg[BITS(inst_cream->inst, 12, 15)] = ReadMemory16(cpu, addr);
             if (BITS(inst_cream->inst, 12, 15) == 15) {
                 INC_PC(sizeof(ldst_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4721,7 +4773,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             cpu->Reg[BITS(inst_cream->inst, 12, 15)] = value;
             if (BITS(inst_cream->inst, 12, 15) == 15) {
                 INC_PC(sizeof(ldst_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4742,7 +4794,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             cpu->Reg[BITS(inst_cream->inst, 12, 15)] = value;
             if (BITS(inst_cream->inst, 12, 15) == 15) {
                 INC_PC(sizeof(ldst_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4761,7 +4813,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
 
             if (BITS(inst_cream->inst, 12, 15) == 15) {
                 INC_PC(sizeof(ldst_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4804,7 +4856,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(mla_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4831,7 +4883,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(mov_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4939,7 +4991,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(mul_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4967,7 +5019,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(mvn_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -4997,7 +5049,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(orr_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -5218,10 +5270,10 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
         inst_cream->get_addr(cpu, inst_cream->inst, address, 1);
 
         cpu->Cpsr    = ReadMemory32(cpu, address);
-        cpu->Reg[15] = ReadMemory32(cpu, address + 4);
+		INSTRUMENT_WRITE_PC(ReadMemory32(cpu, address + 4));
 
         INC_PC(sizeof(ldst_inst));
-        goto DISPATCH;
+        INSTRUMENT_DISPATCH;
     }
 
     RSB_INST:
@@ -5251,7 +5303,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(rsb_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -5282,7 +5334,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(rsc_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -5422,7 +5474,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(sbc_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -6031,7 +6083,8 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             WriteMemory32(cpu, addr, value);
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
-        INC_PC(sizeof(ldst_inst));
+        //INC_PC(sizeof(ldst_inst));
+		ptr += sizeof(arm_inst) + sizeof(ldst_inst);
         FETCH_INST;
         GOTO_NEXT_INST;
     }
@@ -6254,7 +6307,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
             }
             if (inst_cream->Rd == 15) {
                 INC_PC(sizeof(sub_inst));
-                goto DISPATCH;
+                INSTRUMENT_DISPATCH;
             }
         }
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -6729,21 +6782,21 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
     B_2_THUMB:
     {
         b_2_thumb* inst_cream = (b_2_thumb*)inst_base->component;
-        cpu->Reg[15] = cpu->Reg[15] + 4 + inst_cream->imm;
+		INSTRUMENT_WRITE_PC(cpu->Reg[15] + 4 + inst_cream->imm);
         INC_PC(sizeof(b_2_thumb));
-        goto DISPATCH;
+        INSTRUMENT_DISPATCH;
     }
     B_COND_THUMB:
     {
         b_cond_thumb* inst_cream = (b_cond_thumb*)inst_base->component;
 
         if(CondPassed(cpu, inst_cream->cond))
-            cpu->Reg[15] = cpu->Reg[15] + 4 + inst_cream->imm;
+            INSTRUMENT_WRITE_PC(cpu->Reg[15] + 4 + inst_cream->imm);
         else
-            cpu->Reg[15] += 2;
+			INSTRUMENT_WRITE_PC(cpu->Reg[15] + 2);
 
         INC_PC(sizeof(b_cond_thumb));
-        goto DISPATCH;
+        INSTRUMENT_DISPATCH;
     }
     BL_1_THUMB:
     {
@@ -6758,21 +6811,21 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
     {
         bl_2_thumb* inst_cream = (bl_2_thumb*)inst_base->component;
         int tmp = ((cpu->Reg[15] + 2) | 1);
-        cpu->Reg[15] = (cpu->Reg[14] + inst_cream->imm);
+		INSTRUMENT_WRITE_PC((cpu->Reg[14] + inst_cream->imm));
         cpu->Reg[14] = tmp;
         INC_PC(sizeof(bl_2_thumb));
-        goto DISPATCH;
+        INSTRUMENT_DISPATCH;
     }
     BLX_1_THUMB:
     {
         // BLX 1 for armv5t and above
         u32 tmp = cpu->Reg[15];
         blx_1_thumb* inst_cream = (blx_1_thumb*)inst_base->component;
-        cpu->Reg[15] = (cpu->Reg[14] + inst_cream->imm) & 0xFFFFFFFC;
+		INSTRUMENT_WRITE_PC((cpu->Reg[14] + inst_cream->imm) & 0xFFFFFFFC);
         cpu->Reg[14] = ((tmp + 2) | 1);
         cpu->TFlag = 0;
         INC_PC(sizeof(blx_1_thumb));
-        goto DISPATCH;
+        INSTRUMENT_DISPATCH;
     }
 
     UQADD8_INST:

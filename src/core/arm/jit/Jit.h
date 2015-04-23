@@ -8,7 +8,8 @@ public:
 
 	Jit();
 
-	bool InterpreterTranslate(struct ARMul_State* cpu, u32 addr);
+	bool CanRun(u32 pc);
+	void Run(struct ARMul_State* cpu);
 
 private:
 	std::unique_ptr<Private> priv;

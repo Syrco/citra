@@ -37,26 +37,11 @@ struct Jit::Private
 	std::unique_ptr<RuntimeDyld> dyld;
 	std::unique_ptr<RuntimeDyld::LoadedObjectInfo> object;
 
-	/*llvm::ExecutionEngine *executionEngine;
-	IRBuilder<> *builder;
-	const Target *armTarget;
-	MCSubtargetInfo *armSubtarget;
-	const MCDisassembler *armDisassembler;
-	const MCRegisterInfo *armRegisterInfo;
-	const MCAsmInfo *armAsmInfo;
-	MCContext *armContext;
-	Module *module;
+	void(*entry)(u32 *regs, u32 *flags);
+	bool(*preset)(u32 addr);
 
-	struct ARMul_State *state;
-
-	using CompiledBlock = void(*)();
-
-	vector<unique_ptr<class JitBlock>> jitBlocks;
-	std::map<int, CompiledBlock> compiledBlocks;
-	*/
-
-	void(*entry)(u32 *regs);
-	bool InterpreterTranslate(struct ARMul_State* cpu, u32 addr);
+	bool CanRun(u32 pc);
+	void Run(struct ARMul_State* cpu);
 };
 
 Jit::Jit()
@@ -96,48 +81,33 @@ Jit::Private::Private()
 	dyld->registerEHFrames();
 	memoryManager->finalizeMemory();
 
-	entry = (decltype(entry))dyld->getSymbolAddress("entry");
+	entry = (decltype(entry))dyld->getSymbolAddress("Run");
 	if (!entry) __debugbreak();
 
-	/*auto module = llvm::make_unique<Module>("Module", getGlobalContext());
-	module->setTargetTriple(sys::getProcessTriple() + "-elf");
-	this->module = module.get();
-	std::string errorString;
-	executionEngine = EngineBuilder(std::move(module))
-		.setErrorStr(&errorString)
-		.setMCJITMemoryManager(llvm::make_unique<SectionMemoryManager>())
-		.create();
-	if (!executionEngine) __debugbreak();
+	preset = (decltype(preset))dyld->getSymbolAddress("Present");
+	if (!entry) __debugbreak();
 
-	builder = new IRBuilder<>(getGlobalContext());
-
-	StringRef triple = "armv6k-none-eabi";
-
-	armTarget = TargetRegistry::lookupTarget(triple, errorString);
-	if (!armTarget) __debugbreak();
-
-	armSubtarget = armTarget->createMCSubtargetInfo(triple, "armv6k", "");
-	if (!armSubtarget) __debugbreak();
-
-	armRegisterInfo = armTarget->createMCRegInfo(triple);
-	if (!armRegisterInfo) __debugbreak();
-
-	armAsmInfo = armTarget->createMCAsmInfo(*armRegisterInfo, triple);
-	if (!armAsmInfo) __debugbreak();
-
-	armContext = new MCContext(armAsmInfo, armRegisterInfo, nullptr);
-
-	armDisassembler = armTarget->createMCDisassembler(*armSubtarget, *armContext);
-	if (!armDisassembler) __debugbreak();*/
+	if (offsetof(ARMul_State, ZFlag) - offsetof(ARMul_State, NFlag) != 4) __debugbreak();
+	if (offsetof(ARMul_State, CFlag) - offsetof(ARMul_State, NFlag) != 8) __debugbreak();
+	if (offsetof(ARMul_State, VFlag) - offsetof(ARMul_State, NFlag) != 12) __debugbreak();
 }
 
-bool Jit::InterpreterTranslate(ARMul_State* state, u32 addr)
+bool Jit::CanRun(u32 pc)
 {
-	return priv->InterpreterTranslate(state, addr);
+	return priv->CanRun(pc);
 }
 
-bool Jit::Private::InterpreterTranslate(ARMul_State *state, u32 addr)
+void Jit::Run(ARMul_State* state)
 {
-	entry(state->Reg);
-	return true;
+	priv->Run(state);
+}
+
+bool Jit::Private::CanRun(u32 pc)
+{
+	return preset(pc);
+}
+
+void Jit::Private::Run(ARMul_State *state)
+{
+	entry(state->Reg, &state->NFlag);
 }
