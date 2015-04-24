@@ -3713,7 +3713,7 @@ static int clz(unsigned int x) {
 unsigned InterpreterMainLoop(ARMul_State* state) {
 	Common::Profiling::ScopeTimer timer_execute(profile_execute);
 
-	if (!g_jit) g_jit = new Jit();
+	if (!g_jit) g_jit = new Jit(state);
 
 	#undef RM
 	#undef RS
@@ -4023,29 +4023,23 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
         else
             cpu->Reg[15] &= 0xfffffffc;
 
-        phys_addr = cpu->Reg[15];
-
 		g_jit->BeforeFindBB(cpu);
+
+		phys_addr = cpu->Reg[15];
+
+		if (g_jit->CanRun(cpu->Reg[15]))
+			g_jit->Run();
 
 		//if (cpu->Reg[14] == 0x0022ed68) __debugbreak();
 		//if (cpu->Reg[15] == 0x114db8) __debugbreak();
 		if (find_bb(cpu->Reg[15], ptr) == -1)
 		{
-			g_jit->Run(cpu);
 			//if (cpu->Reg[15] >= 0x124000) __debugbreak();
 			//if (cpu->Reg[14] == 0x0022ed68) __debugbreak();
 			//if (cpu->Reg[15] == 0x114db8) __debugbreak();
 
-			if (cpu->TFlag)
-				cpu->Reg[15] &= 0xfffffffe;
-			else
-				cpu->Reg[15] &= 0xfffffffc;
-			phys_addr = cpu->Reg[15];
-			if (find_bb(cpu->Reg[15], ptr) == -1)
-			{
-				if (InterpreterTranslate(cpu, ptr, cpu->Reg[15]) == FETCH_EXCEPTION)
-					goto END;
-			}
+			if (InterpreterTranslate(cpu, ptr, cpu->Reg[15]) == FETCH_EXCEPTION)
+				goto END;
 		}
 
         inst_base = (arm_inst *)&inst_buf[ptr];

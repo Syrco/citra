@@ -38,7 +38,7 @@ bool CodeBlock::AddInstruction()
 
 	auto instr = Instructions::Read(bytes);
 	if (!instr) return false;
-	if (!instr->CanCodegen(codegen)) return false;
+	if (!instr->CanCodegen(codegen, pc)) return false;
 	disabled = instr->IsDisabled(codegen);
 
 	stringstream ss;

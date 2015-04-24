@@ -8,6 +8,7 @@ set(SRCS
 			Mov.cpp
 			Branch.cpp
 			Cmp.cpp
+			Ldr.cpp
             )
 set(HEADERS
             Codegen.h
@@ -19,6 +20,7 @@ set(HEADERS
 			Mov.h
 			Branch.h
 			Cmp.h
+			Ldr.h
             )
 			
 create_directory_groups(${SRCS} ${HEADERS})

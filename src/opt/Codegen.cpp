@@ -19,7 +19,10 @@
 #include <llvm/Transforms/IPO/PassManagerBuilder.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Target/TargetLibraryInfo.h>
+#include <llvm/IR/MDBuilder.h>
+#include <llvm/IR/InlineAsm.h>
 #include <core/mem_map.h>
+#include <sstream>
 #include "common/logging/text_formatter.h"
 #include "common/logging/backend.h"
 #include "common/logging/filter.h"
@@ -84,10 +87,34 @@ Codegen::Codegen() : decoder(new Decoder(this))
 	module = llvm::make_unique<Module>("Module", *nativeContext);
 	module->setTargetTriple(nativeTripleStr);
 	irBuilder = llvm::make_unique<IRBuilder<>>(*nativeContext);
-	Type *arguments[] = {
+
+	mdBuilder.reset(new MDBuilder(*nativeContext));
+	auto tbaaRoot = mdBuilder->createTBAARoot("Root");
+	//mdRegister = mdBuilder->createTBAAScalarTypeNode("Register", tbaaRoot);
+	/*std::vector<pair<MDNode *, uint64_t>> nodes((int)Register::Count);
+	for (auto i = 0; i < (int)Register::Count; ++i)
+	{
+		stringstream ss;
+		ss << "Register" << i;
+		mdRegisters[i] = mdBuilder->createTBAAScalarTypeNode(ss.str().c_str(), tbaaRoot);
+		nodes[i] = make_pair(mdRegisters[i], i * 4);
+	}
+	mdRegistersGlobal = mdBuilder->createTBAAStructTypeNode("RegistersGlobal", nodes);*/
+	for (auto i = 0; i < (int)Register::Count; ++i)
+	{
+		stringstream ss;
+		ss << "Register" << i;
+		mdRegisters[i] = mdBuilder->createTBAAScalarTypeNode(ss.str().c_str(), tbaaRoot);
+	}
+	mdRegistersGlobal = mdBuilder->createTBAAScalarTypeNode("RegistersGlobal", tbaaRoot);
+	mdRead32 = mdBuilder->createTBAAScalarTypeNode("Read32", tbaaRoot);
+	mdMemory = mdBuilder->createTBAAScalarTypeNode("Memory", tbaaRoot);
+	
+	/*Type *arguments[] = {
 		Type::getInt32PtrTy(*nativeContext), Type::getInt1PtrTy(*nativeContext)
 	};
-	codeBlockFunctionSignature = FunctionType::get(Type::getVoidTy(*nativeContext), arguments, false);
+	codeBlockFunctionSignature = FunctionType::get(Type::getVoidTy(*nativeContext), arguments, false);*/
+	codeBlockFunctionSignature = FunctionType::get(Type::getVoidTy(*nativeContext), false);
 }
 
 Codegen::~Codegen()
@@ -106,29 +133,40 @@ struct BinSearch
 	BinSearch r() { return BinSearch(mid, max); }
 };
 
-static const size_t TranslateSize = 0x24000;
+const size_t Codegen::TranslateSize = 0x24000;
 //static const size_t TranslateSize = 0x40;
 //static const size_t TranslateSize = 0x13AD0;
 //static const size_t TranslateSize = BinSearch(0x25000).r().r().r().r().l().l().r().r().l().l().l().l().mid;
 //static const size_t TranslateSize = BinSearch(0x25000).r().r().r().r().l().l().r().r().l().l().l().l().mid + 4;
 
 
-static const size_t TranslateStart = Memory::EXEFS_CODE_VADDR;
-static const size_t TranslateEnd = TranslateStart + TranslateSize;
+const size_t Codegen::TranslateStart = Memory::EXEFS_CODE_VADDR;
+const size_t Codegen::TranslateEnd = TranslateStart + TranslateSize;
 
 void Codegen::Run(const char *filename)
 {
+	GenerateGlobals();
 	GenerateEntryFunction();
 	GeneratePresentFunction();
 
 	WriteFile(filename);
 }
 
+void Codegen::GenerateGlobals()
+{
+	auto i32ptr = Type::getInt32PtrTy(*nativeContext);
+	auto i1ptr = Type::getInt1PtrTy(*nativeContext);
+	registersGlobal = new GlobalVariable(*module, i32ptr, false, GlobalValue::ExternalLinkage, ConstantPointerNull::get(i32ptr), "Registers", nullptr, GlobalValue::NotThreadLocal, 0, true);
+	flagsGlobal = new GlobalVariable(*module, i1ptr, false, GlobalValue::ExternalLinkage, ConstantPointerNull::get(i1ptr), "Flags", nullptr, GlobalValue::NotThreadLocal, 0, true);
+
+	auto read32Type = FunctionType::get(irBuilder->getInt32Ty(), { irBuilder->getInt32Ty() }, false);
+	auto read32PtrType = PointerType::get(read32Type, 0);
+	read32Global = new GlobalVariable(*module, read32PtrType, false, GlobalValue::ExternalLinkage, ConstantPointerNull::get(read32PtrType), "Memory::Read32", nullptr, GlobalValue::NotThreadLocal, 0, true);
+}
+
 void Codegen::GenerateEntryFunction()
 {
 	function.reset(Function::Create(codeBlockFunctionSignature, GlobalValue::LinkageTypes::ExternalLinkage, "Run", module.get()));
-	registersArgument = &function->getArgumentList().front();
-	flagsArgument = function->getArgumentList().getNext(registersArgument);
 
 	auto switchBasicBlock = BasicBlock::Create(*nativeContext, "switch", function.get());
 	auto exitBasicBlock = BasicBlock::Create(*nativeContext, "exit", function.get());
@@ -136,6 +174,7 @@ void Codegen::GenerateEntryFunction()
 	outOfCodeblock = BasicBlock::Create(*nativeContext, "outOfCodeblock", function.get());
 
 	irBuilder->SetInsertPoint(inToCodeBlock);
+
 	CreateRegisters();
 	TranslateBlocks();
 	GenerateSwitchArray();
@@ -143,7 +182,7 @@ void Codegen::GenerateEntryFunction()
 	Value *addr;
 
 	irBuilder->SetInsertPoint(switchBasicBlock);
-	auto pc = irBuilder->CreateLoad(irBuilder->CreateConstGEP1_32(registersArgument, 15));
+	auto pc = Read(Register::PC);
 	GenerateSwitchArrayIf(pc, function.get(),
 		switchBasicBlock, inToCodeBlock, exitBasicBlock,
 		&addr);
@@ -423,18 +462,38 @@ llvm::Type *Codegen::RegType(Register reg)
 }
 Value *Codegen::RegGEP(Register reg)
 {
-	auto src = reg < Register::N ? registersArgument : flagsArgument;
+	auto src = reg < Register::N ? registersGlobal : flagsGlobal;
 	auto offset = reg < Register::N ? (unsigned)reg : (((unsigned)reg - (unsigned)Register::N) * 4);
-	return irBuilder->CreateConstGEP1_32(src, offset);
+	auto load = irBuilder->CreateLoad(src);
+	load->setMetadata(LLVMContext::MD_tbaa, mdRegistersGlobal);
+	return irBuilder->CreateConstGEP1_32(load, offset);
 }
 Value *Codegen::Read(Register reg)
 {
-	return irBuilder->CreateLoad(RegGEP(reg));
+	auto load = irBuilder->CreateLoad(RegGEP(reg));
+	load->setMetadata(LLVMContext::MD_tbaa, mdRegisters[(int)reg]);
+	return load;
 }
 Value *Codegen::Write(Register reg, Value *val)
 {
-	return irBuilder->CreateStore(val, RegGEP(reg));
+	auto store = irBuilder->CreateStore(val, RegGEP(reg));
+	store->setMetadata(LLVMContext::MD_tbaa, mdRegisters[(int)reg]);
+	return store;
 }
+
+llvm::Value* Codegen::Read32(llvm::Value* address)
+{
+	auto read32 = irBuilder->CreateLoad(read32Global);
+	read32->setMetadata(LLVMContext::MD_tbaa, mdRead32);
+	Type *argsType[] = { read32->getType(), irBuilder->getInt32Ty() };
+	auto inlineAsm = InlineAsm::get(FunctionType::get(irBuilder->getInt32Ty(), argsType, false),
+		"sub rsp, 0x20; call rdx; add rsp, 0x20", "={eax},{rdx},{rcx},~{rcx},~{rdx},~{r8},~{r9},~{r10},~{r11},~{xmm4},~{xmm5}", false, true, InlineAsm::AD_Intel);
+	auto value = irBuilder->CreateCall2(inlineAsm, read32, address);
+	/*auto value = irBuilder->CreateCall(read32, address);*/
+	value->setMetadata(LLVMContext::MD_tbaa, mdMemory);
+	return value;
+}
+
 bool Codegen::CanCond(Condition cond)
 {
 	return cond != Condition::Invalid;

@@ -13,13 +13,20 @@
 #include "Instruction.h"
 #include "Decode.h"
 
+namespace llvm { class MDBuilder; }
+
 class Codegen
 {
 public:
+	static const size_t TranslateStart;
+	static const size_t TranslateEnd;
+	static const size_t TranslateSize;
+
 	Codegen();
 	~Codegen();
 
 	void Run(const char *filename);
+	void GenerateGlobals();
 	void RegisterBasicBlock(llvm::BasicBlock *bb, u32 pc);
 
 	void GenerateEntryFunction();
@@ -43,7 +50,7 @@ public:
 	llvm::Value *RegGEP(Register reg);
 	llvm::Value *Read(Register reg);
 	llvm::Value *Write(Register reg, llvm::Value *val);
-
+	llvm::Value* Read32(llvm::Value* address);
 
 	// Native
 	std::unique_ptr<llvm::LLVMContext> nativeContext;
@@ -51,6 +58,9 @@ public:
 	std::unique_ptr<llvm::IRBuilder<>> irBuilder;
 	std::unique_ptr<llvm::TargetMachine> nativeTarget;
 	std::unique_ptr<llvm::Function> function;
+	std::unique_ptr<llvm::MDBuilder> mdBuilder;
+	llvm::MDNode *mdRegisters[(int)Register::Count], *mdRegistersGlobal, *mdRead32, *mdMemory;
+
 
 	// Arm
 	std::unique_ptr<llvm::LLVMContext> armContext;
@@ -67,7 +77,7 @@ public:
 
 	Decoder *decoder;
 
-	llvm::Argument *registersArgument, *flagsArgument;
+	llvm::GlobalVariable *registersGlobal, *flagsGlobal, *read32Global;
 	llvm::BasicBlock *outOfCodeblock, *inToCodeBlock;
 
 	size_t switchArraySize;

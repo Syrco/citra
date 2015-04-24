@@ -31,26 +31,25 @@ using namespace std;
 
 struct Jit::Private
 {
-	Jit::Private();
+	Jit::Private(ARMul_State *state);
 
 	std::unique_ptr<SectionMemoryManager> memoryManager;
 	std::unique_ptr<RuntimeDyld> dyld;
 	std::unique_ptr<RuntimeDyld::LoadedObjectInfo> object;
 
-	void(*entry)(u32 *regs, u32 *flags);
+	void(*entry)();
 	bool(*preset)(u32 addr);
 
 	bool CanRun(u32 pc);
-	void Run(struct ARMul_State* cpu);
+	void Run();
 };
 
-Jit::Jit()
+Jit::Jit(ARMul_State *state)
 {
-
-	priv = std::make_unique<Private>();
+	priv = std::make_unique<Private>(state);
 }
 
-Jit::Private::Private()
+Jit::Private::Private(ARMul_State *state)
 {
 	InitializeNativeTarget();
 	InitializeNativeTargetAsmPrinter();
@@ -81,6 +80,14 @@ Jit::Private::Private()
 	dyld->registerEHFrames();
 	memoryManager->finalizeMemory();
 
+	auto regsPtr = (u32 **)dyld->getSymbolAddress("Registers");
+	auto flagsPtr = (u32 **)dyld->getSymbolAddress("Flags");
+	auto read32Ptr = (decltype(&Memory::Read32)*)dyld->getSymbolAddress("Memory::Read32");
+
+	*regsPtr = state->Reg;
+	*flagsPtr = &state->NFlag;
+	*read32Ptr = &Memory::Read32;
+
 	entry = (decltype(entry))dyld->getSymbolAddress("Run");
 	if (!entry) __debugbreak();
 
@@ -97,9 +104,9 @@ bool Jit::CanRun(u32 pc)
 	return priv->CanRun(pc);
 }
 
-void Jit::Run(ARMul_State* state)
+void Jit::Run()
 {
-	priv->Run(state);
+	priv->Run();
 }
 
 bool Jit::Private::CanRun(u32 pc)
@@ -107,9 +114,9 @@ bool Jit::Private::CanRun(u32 pc)
 	return preset(pc);
 }
 
-void Jit::Private::Run(ARMul_State *state)
+void Jit::Private::Run()
 {
-	entry(state->Reg, &state->NFlag);
+	entry();
 }
 
 void Jit::BeforeFindBB(struct ARMul_State* cpu)
@@ -143,7 +150,7 @@ void Jit::BeforeFindBB(struct ARMul_State* cpu)
 	runRecord.write(buf, sizeof(buf) - 1);
 
 	++opcodes;
-	if (opcodes > 0x80000)
+	if (opcodes > 0x402d2)
 	{
 		runRecord.flush();
 		runRecord.close();
