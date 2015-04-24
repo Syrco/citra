@@ -304,6 +304,7 @@ void Codegen::WriteFile(const char *filename)
 	LOG_INFO(Frontend, "Generating module");
 	passManager.run(*module);
 	file.flush();
+	LOG_INFO(Frontend, "Done");
 }
 
 void Codegen::TranslateBlocks()
@@ -311,7 +312,7 @@ void Codegen::TranslateBlocks()
 	size_t largestSize = 0, largestPc = 0;
 	size_t translated = 0;
 	CodeBlock *lastBlock = nullptr;
-	size_t linked = 0, terminated = 0, jumpFailed = 0;
+	size_t linked = 0, terminated = 0, jumpFailed = 0, disabled = 0;
 	for (u32 i = TranslateStart; i < TranslateEnd; i += 4)
 	{
 		auto codeBlock = new CodeBlock(this, i);
@@ -340,6 +341,7 @@ void Codegen::TranslateBlocks()
 	{
 		auto block = p.second;
 		if (!block->jumpAddress) continue;
+		if (block->disabled) continue;
 		auto i = blocks.find(block->jumpAddress);
 		if (i != blocks.end())
 		{
@@ -350,12 +352,21 @@ void Codegen::TranslateBlocks()
 	for (auto p : blocks)
 	{
 		auto block = p.second;
-		if (!block->jumpAddress) continue;
-		auto i = blocks.find(block->jumpAddress);
-		if (i == blocks.end())
+		if (block->disabled)
 		{
+			block->jumpAddress = block->pc;
 			block->JumpFailed();
-			++jumpFailed;
+			++disabled;
+		}
+		else
+		{
+			if (!block->jumpAddress) continue;
+			auto i = blocks.find(block->jumpAddress);
+			if (i == blocks.end())
+			{
+				block->JumpFailed();
+				++jumpFailed;
+			}
 		}
 	}
 	for (auto block : blocks)
@@ -372,6 +383,7 @@ void Codegen::TranslateBlocks()
 	cout << linked <<     " linked     blocks = " << (100.0 * linked / blocks.size()) << "%" << endl;
 	cout << terminated << " terminated blocks = " << (100.0 * terminated / blocks.size()) << "%" << endl;
 	cout << jumpFailed << " jumpFailed blocks = " << (100.0 * jumpFailed / blocks.size()) << "%" << endl;
+	cout << disabled << " disabled   blocks = " << (100.0 * disabled / blocks.size()) << "%" << endl;
 }
 
 void Codegen::CreateRegisters()
@@ -422,4 +434,8 @@ Value *Codegen::Read(Register reg)
 Value *Codegen::Write(Register reg, Value *val)
 {
 	return irBuilder->CreateStore(val, RegGEP(reg));
+}
+bool Codegen::CanCond(Condition cond)
+{
+	return cond != Condition::Invalid;
 }

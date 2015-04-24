@@ -111,3 +111,43 @@ void Jit::Private::Run(ARMul_State *state)
 {
 	entry(state->Reg, &state->NFlag);
 }
+
+void Jit::BeforeFindBB(struct ARMul_State* cpu)
+{
+#if 0
+	static std::ofstream runRecord("run.txt", ios::binary);
+	if (!runRecord) __debugbreak();
+	static size_t opcodes = 0;
+	/*char buf[10];
+	for (auto i = 0; i < 16; ++i)
+	{
+		snprintf(buf, 10, "%08x ", cpu->Reg[i]);
+		runRecord << buf;
+	}
+	runRecord << (cpu->NFlag ? "N" : " ");
+	runRecord << (cpu->ZFlag ? "Z" : " ");
+	runRecord << (cpu->CFlag ? "C" : " ");
+	runRecord << (cpu->VFlag ? "V" : " ");
+	runRecord << "\n";*/
+
+	char buf[] = "00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000     \n";
+	for (auto i = 0; i < 16; ++i)
+	{
+		sprintf(buf + i * 9, "%08x ", cpu->Reg[i]);
+	}
+	buf[16 * 9] = ' ';
+	if (cpu->NFlag) buf[16 * 9 + 0] = 'N';
+	if (cpu->ZFlag) buf[16 * 9 + 1] = 'Z';
+	if (cpu->CFlag) buf[16 * 9 + 2] = 'C';
+	if (cpu->VFlag) buf[16 * 9 + 3] = 'V';
+	runRecord.write(buf, sizeof(buf) - 1);
+
+	++opcodes;
+	if (opcodes > 0x80000)
+	{
+		runRecord.flush();
+		runRecord.close();
+		_exit(0);
+	}
+#endif
+}

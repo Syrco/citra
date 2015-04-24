@@ -18,6 +18,7 @@ CodeBlock::CodeBlock(Codegen *codegen, u32 pc) : codegen(codegen), pc(pc)
 {
 	fill(registers.begin(), registers.end(), nullptr);
 	fill(registersPhi.begin(), registersPhi.end(), nullptr);
+	//fill(conditionalStores.begin(), conditionalStores.end(), nullptr);
 }
 
 CodeBlock::~CodeBlock()
@@ -38,9 +39,11 @@ bool CodeBlock::AddInstruction()
 	auto instr = Instructions::Read(bytes);
 	if (!instr) return false;
 	if (!instr->CanCodegen(codegen)) return false;
+	disabled = instr->IsDisabled(codegen);
 
 	stringstream ss;
 	ss << "block_" << hex << pc;
+	if (disabled) ss << "_disabled";
 	basicBlock.reset(BasicBlock::Create(*codegen->nativeContext, ss.str(), codegen->function.get()));
 	ss << "_loadblock";
 	loadBlock.reset(BasicBlock::Create(*codegen->nativeContext, ss.str(), codegen->function.get()));
@@ -49,7 +52,10 @@ bool CodeBlock::AddInstruction()
 	codegen->irBuilder->CreateBr(basicBlock.get());
 
 	codegen->irBuilder->SetInsertPoint(basicBlock.get());
-	instr->DoCodegen(codegen, this);
+	if (!disabled)
+	{
+		instr->DoCodegen(codegen, this);
+	}
 	lastBlock = codegen->irBuilder->GetInsertBlock();
 
 	return true;
@@ -58,6 +64,7 @@ llvm::Value *CodeBlock::Read(Register reg)
 {
 	if (!registers[(int)reg])
 	{
+		if (registersPhi[(int)reg]) __debugbreak();
 		auto insertPoint = codegen->irBuilder->saveIP();
 
 		codegen->irBuilder->SetInsertPoint(loadBlock.get(), loadBlock->begin());
@@ -94,6 +101,11 @@ void CodeBlock::Link(CodeBlock *prev, CodeBlock *next)
 	next->prevs.push_back(prev);
 	next->nexts.push_back(next);
 
+	/*if (next->pc == 0x1001e0)
+	{
+		next->basicBlock->dump();
+	}*/
+
 	for (auto i = 0; i < prev->registers.size(); ++i)
 	{
 		auto prevR = prev->registers[i];
@@ -108,6 +120,12 @@ void CodeBlock::Link(CodeBlock *prev, CodeBlock *next)
 				next->registersPhi[i]->addIncoming(prev->Read((Register)i), prev->lastBlock);
 		}
 	}
+
+	/*if (next->pc == 0x1001e0)
+	{
+		next->basicBlock->dump();
+		__debugbreak();
+	}*/
 
 	if (prev->lastBlock->getTerminator()) __debugbreak();
 	codegen->irBuilder->SetInsertPoint(prev->lastBlock);
@@ -149,5 +167,34 @@ void CodeBlock::TerminateAt(u32 pc)
 	for (auto i = 0; i < registers.size(); ++i)
 	{
 		Spill(i);
+	}
+}
+void CodeBlock::BeginCond(Condition cond)
+{
+	condPassed = BasicBlock::Create(*codegen->nativeContext, "Passed", codegen->function.get());;
+	condNotPassed = BasicBlock::Create(*codegen->nativeContext, "NotPassed", codegen->function.get());
+	codegen->decoder->CreateConditionPassed(this, cond, condPassed, condNotPassed);
+
+	codegen->irBuilder->SetInsertPoint(condPassed);
+	inConditionalBlock = true;
+}
+void CodeBlock::EndCond()
+{
+	codegen->irBuilder->CreateBr(condNotPassed);
+	codegen->irBuilder->SetInsertPoint(condNotPassed);
+
+	for (auto i = 0; i < registers.size(); ++i)
+	{
+		auto newVal = registers[i];
+		auto oldPhi = registersPhi[i];
+		if (newVal == oldPhi) continue;
+
+		registers[i] = nullptr;
+		auto oldVal = oldPhi ? oldPhi : Read((Register)i);
+
+		auto newPhi = codegen->irBuilder->CreatePHI(newVal->getType(), 2);
+		newPhi->addIncoming(newVal, condPassed);
+		newPhi->addIncoming(oldVal, basicBlock.get());
+		Write((Register)i, newPhi);
 	}
 }

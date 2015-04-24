@@ -4025,27 +4025,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
 
         phys_addr = cpu->Reg[15];
 
-		/*static std::ofstream runRecord("run.txt");
-		if (!runRecord) __debugbreak();
-		static size_t opcodes = 0;
-		char buf[10];
-		for (auto i = 0; i < 16; ++i)
-		{
-			snprintf(buf, 10, "%08x ", cpu->Reg[i]);
-			runRecord << buf;
-		}
-		runRecord << (cpu->NFlag ? "N" : " ");
-		runRecord << (cpu->ZFlag ? "Z" : " ");
-		runRecord << (cpu->CFlag ? "C" : " ");
-		runRecord << (cpu->VFlag ? "V" : " ");
-		runRecord << "\n";
-		++opcodes;
-		if (opcodes > 4000000)
-		{
-			runRecord.flush();
-			runRecord.close();
-			_exit(0);
-		}*/
+		g_jit->BeforeFindBB(cpu);
 
 		//if (cpu->Reg[14] == 0x0022ed68) __debugbreak();
 		//if (cpu->Reg[15] == 0x114db8) __debugbreak();

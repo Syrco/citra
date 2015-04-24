@@ -37,6 +37,7 @@ public:
 
 	bool CanRead(Register reg);
 	bool CanWrite(Register reg);
+	bool CanCond(Condition cond);
 
 	llvm::Type *RegType(Register reg);
 	llvm::Value *RegGEP(Register reg);
