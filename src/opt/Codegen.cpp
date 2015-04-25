@@ -35,40 +35,6 @@ using namespace std;
 
 Codegen::Codegen() : decoder(new Decoder(this))
 {
-	// Arm
-	LLVMInitializeARMTargetInfo();
-	LLVMInitializeARMTarget();
-	LLVMInitializeARMTargetMC();
-	LLVMInitializeARMDisassembler();
-	LLVMInitializeARMAsmPrinter();
-
-	armContext.reset(new LLVMContext());
-
-	std::string errorString;
-	auto armTriple = "armv6-none-eabi";
-	armTarget = TargetRegistry::lookupTarget(armTriple, errorString);
-	if (!armTarget) __debugbreak();
-
-	armSubtarget.reset(armTarget->createMCSubtargetInfo(armTriple, "cortex-a8", ""));
-	if (!armSubtarget) __debugbreak();
-
-	armRegisterInfo.reset(armTarget->createMCRegInfo(armTriple));
-	if (!armRegisterInfo) __debugbreak();
-
-	armAsmInfo.reset(armTarget->createMCAsmInfo(*armRegisterInfo, armTriple));
-	if (!armAsmInfo) __debugbreak();
-
-	armMCContext = llvm::make_unique<MCContext>(armAsmInfo.get(), armRegisterInfo.get(), nullptr);
-
-	armDisassembler.reset(armTarget->createMCDisassembler(*armSubtarget, *armMCContext));
-	if (!armDisassembler) __debugbreak();
-
-	armInstrInfo.reset(armTarget->createMCInstrInfo());
-	if (!armInstrInfo) __debugbreak();
-
-	armInstPrinter.reset(armTarget->createMCInstPrinter(0, *armAsmInfo, *armInstrInfo, *armRegisterInfo, *armSubtarget));
-	if (!armInstPrinter) __debugbreak();
-
 	// Native
 	InitializeNativeTarget();
 	InitializeNativeTargetAsmPrinter();
@@ -90,16 +56,6 @@ Codegen::Codegen() : decoder(new Decoder(this))
 
 	mdBuilder.reset(new MDBuilder(*nativeContext));
 	auto tbaaRoot = mdBuilder->createTBAARoot("Root");
-	//mdRegister = mdBuilder->createTBAAScalarTypeNode("Register", tbaaRoot);
-	/*std::vector<pair<MDNode *, uint64_t>> nodes((int)Register::Count);
-	for (auto i = 0; i < (int)Register::Count; ++i)
-	{
-		stringstream ss;
-		ss << "Register" << i;
-		mdRegisters[i] = mdBuilder->createTBAAScalarTypeNode(ss.str().c_str(), tbaaRoot);
-		nodes[i] = make_pair(mdRegisters[i], i * 4);
-	}
-	mdRegistersGlobal = mdBuilder->createTBAAStructTypeNode("RegistersGlobal", nodes);*/
 	for (auto i = 0; i < (int)Register::Count; ++i)
 	{
 		stringstream ss;
@@ -109,12 +65,9 @@ Codegen::Codegen() : decoder(new Decoder(this))
 	mdRegistersGlobal = mdBuilder->createTBAAScalarTypeNode("RegistersGlobal", tbaaRoot);
 	mdRead32 = mdBuilder->createTBAAScalarTypeNode("Read32", tbaaRoot);
 	mdMemory = mdBuilder->createTBAAScalarTypeNode("Memory", tbaaRoot);
-	
-	/*Type *arguments[] = {
-		Type::getInt32PtrTy(*nativeContext), Type::getInt1PtrTy(*nativeContext)
-	};
-	codeBlockFunctionSignature = FunctionType::get(Type::getVoidTy(*nativeContext), arguments, false);*/
-	codeBlockFunctionSignature = FunctionType::get(Type::getVoidTy(*nativeContext), false);
+
+	entryFunctionSignature = FunctionType::get(Type::getVoidTy(*nativeContext), false);
+	codeBlockFunctionSignature = FunctionType::get(Type::getVoidTy(*nativeContext), Type::getInt8PtrTy(*nativeContext), false);
 }
 
 Codegen::~Codegen()
@@ -134,7 +87,7 @@ struct BinSearch
 };
 
 const size_t Codegen::TranslateSize = 0x24000;
-//static const size_t TranslateSize = 0x40;
+//const size_t Codegen::TranslateSize = 0x40;
 //static const size_t TranslateSize = 0x13AD0;
 //static const size_t TranslateSize = BinSearch(0x25000).r().r().r().r().l().l().r().r().l().l().l().l().mid;
 //static const size_t TranslateSize = BinSearch(0x25000).r().r().r().r().l().l().r().r().l().l().l().l().mid + 4;
@@ -146,6 +99,9 @@ const size_t Codegen::TranslateEnd = TranslateStart + TranslateSize;
 void Codegen::Run(const char *filename)
 {
 	GenerateGlobals();
+	TranslateBlocks();
+	ColorBlocks();
+	GenerateSwitchArray();
 	GenerateEntryFunction();
 	GeneratePresentFunction();
 
@@ -164,38 +120,106 @@ void Codegen::GenerateGlobals()
 	read32Global = new GlobalVariable(*module, read32PtrType, false, GlobalValue::ExternalLinkage, ConstantPointerNull::get(read32PtrType), "Memory::Read32", nullptr, GlobalValue::NotThreadLocal, 0, true);
 }
 
+void Codegen::ColorBlocks()
+{
+	size_t color = 0;
+
+	for (auto p : blocks)
+	{
+		auto block = p.second;
+		if (blockColors.count(block)) continue;
+		colorBlocks.push_back({});
+		ColorBlock(block, color);
+		GenerateFunctionForColor(color);
+		color++;
+	}
+
+	cout << color << " block colors" << endl;
+}
+
+void Codegen::ColorBlock(CodeBlock *codeBlock, size_t color)
+{
+	if (blockColors.count(codeBlock)) return;
+	blockColors[codeBlock] = color;
+	colorBlocks[color].push_back(codeBlock);
+
+	for (auto next : codeBlock->nexts) ColorBlock(next, color);
+	for (auto prev : codeBlock->prevs) ColorBlock(prev, color);
+}
+
+void Codegen::GenerateFunctionForColor(size_t color)
+{
+	auto colorList = colorBlocks[color];
+	stringstream ss;
+	ss << "BlockColor_" << color;
+	auto function = Function::Create(codeBlockFunctionSignature, GlobalValue::PrivateLinkage, ss.str().c_str(), module.get());
+	blockFunction[color] = function;
+	auto arg = &function->getArgumentList().front();
+	auto entryBlock = BasicBlock::Create(*nativeContext, (ss.str() + "_Entry").c_str(), function);
+	auto exitBlock = BasicBlock::Create(*nativeContext, (ss.str() + "_Exit").c_str(), function);
+	irBuilder->SetInsertPoint(entryBlock);
+	auto indirectBr = irBuilder->CreateIndirectBr(arg, colorList.size());
+	for (auto block : colorList)
+	{
+		indirectBr->addDestination(block->loadBlock.get());
+		if (!block->lastBlock->getTerminator())
+		{
+			irBuilder->SetInsertPoint(block->lastBlock);
+			irBuilder->CreateBr(exitBlock);
+		}
+		InsertBlock(block->loadBlock.get(), function);
+	}
+	irBuilder->SetInsertPoint(exitBlock);
+	irBuilder->CreateRetVoid();
+}
+
+void Codegen::InsertBlock(BasicBlock *block, Function *function)
+{
+	if (block->getParent())
+	{
+		if (block->getParent() != function)
+		{
+			cout << function->getName().begin() << endl;
+			cout << block->getParent()->getName().begin() << endl;
+			block->dump();
+		}
+		assert(block->getParent() == function);
+		return;
+	}
+	block->insertInto(function);
+	auto terminator = block->getTerminator();
+	if (terminator)
+	{
+		for (auto i = 0; i < terminator->getNumSuccessors(); ++i)
+		{
+			InsertBlock(terminator->getSuccessor(i), function);
+		}
+	}
+}
+
 void Codegen::GenerateEntryFunction()
 {
-	function.reset(Function::Create(codeBlockFunctionSignature, GlobalValue::LinkageTypes::ExternalLinkage, "Run", module.get()));
+	entryFunction.reset(Function::Create(codeBlockFunctionSignature, GlobalValue::LinkageTypes::ExternalLinkage, "Run", module.get()));
 
-	auto switchBasicBlock = BasicBlock::Create(*nativeContext, "switch", function.get());
-	auto exitBasicBlock = BasicBlock::Create(*nativeContext, "exit", function.get());
-	inToCodeBlock = BasicBlock::Create(*nativeContext, "notNull", function.get());
-	outOfCodeblock = BasicBlock::Create(*nativeContext, "outOfCodeblock", function.get());
+	auto switchBasicBlock = BasicBlock::Create(*nativeContext, "switch", entryFunction.get());
+	auto exitBasicBlock = BasicBlock::Create(*nativeContext, "exit", entryFunction.get());
+	inToCodeBlock = BasicBlock::Create(*nativeContext, "notNull", entryFunction.get());
 
 	irBuilder->SetInsertPoint(inToCodeBlock);
 
-	CreateRegisters();
-	TranslateBlocks();
-	GenerateSwitchArray();
-
-	Value *addr;
+	Value *outValue;
 
 	irBuilder->SetInsertPoint(switchBasicBlock);
 	auto pc = Read(Register::PC);
-	GenerateSwitchArrayIf(pc, function.get(),
+	GenerateSwitchArrayIf(pc, entryFunction.get(),
 		switchBasicBlock, inToCodeBlock, exitBasicBlock,
-		&addr);
+		&outValue);
 
 	irBuilder->SetInsertPoint(inToCodeBlock);
-	auto indirectBr = irBuilder->CreateIndirectBr(addr, switchArraySize);
-	for (auto p : blocks)
-	{
-		indirectBr->addDestination(p.second->loadBlock.get());
-	}
+	auto block = irBuilder->CreateExtractValue(outValue, 0);
+	auto func = irBuilder->CreateExtractValue(outValue, 1);
+	irBuilder->CreateCall(func, block);
 
-	irBuilder->SetInsertPoint(outOfCodeblock);
-	StoreRegisters();
 	irBuilder->CreateBr(exitBasicBlock);
 
 	irBuilder->SetInsertPoint(exitBasicBlock);
@@ -228,15 +252,24 @@ void Codegen::GeneratePresentFunction()
 
 void Codegen::GenerateSwitchArray()
 {
-	switchArraySize = TranslateSize / 4;
-	switchArrayMemberType = irBuilder->getInt8PtrTy();
+	switchArraySize = TranslateSize / 4;	
+	PointerType *structElementsTypes[] = { IntegerType::getInt8PtrTy(*nativeContext), PointerType::get(codeBlockFunctionSignature, 0) };
+	switchArrayMemberType = StructType::get(*nativeContext, ArrayRef<Type*>((Type**)structElementsTypes, 2));
 	auto switchArrType = ArrayType::get(switchArrayMemberType, switchArraySize);
-	switchArrayNull = ConstantPointerNull::get(switchArrayMemberType);
+
+	Constant *nullStructElements[] = { ConstantPointerNull::get(structElementsTypes[0]), ConstantPointerNull::get(structElementsTypes[1]) };
+	switchArrayNull = ConstantPointerNull::get(structElementsTypes[0]);
+	//switchArrayMemberType->dump();
+	auto switchArrayNullStruct = ConstantStruct::get(switchArrayMemberType, ArrayRef<Constant*>(nullStructElements));
 	auto switchLocalArr = new Constant*[switchArraySize];
-	std::fill(switchLocalArr, switchLocalArr + switchArraySize, switchArrayNull);
-	for (auto p : blocks)
+	std::fill(switchLocalArr, switchLocalArr + switchArraySize, switchArrayNullStruct);
+	for (auto color = 0; color < colorBlocks.size(); ++color)
 	{
-		switchLocalArr[(p.first - TranslateStart) / 4] = BlockAddress::get(function.get(), p.second->loadBlock.get());
+		for (auto block : colorBlocks[color])
+		{
+			Constant *structElements[] = { BlockAddress::get(block->loadBlock->getParent(), block->loadBlock.get()), block->loadBlock->getParent() };
+			switchLocalArr[(block->pc - TranslateStart) / 4] = ConstantStruct::get(switchArrayMemberType, ArrayRef<Constant*>(structElements));
+		}
 	}
 	auto switchArrayConst = ConstantArray::get(switchArrType, ArrayRef<Constant*>(switchLocalArr, switchLocalArr + switchArraySize));
 	delete switchLocalArr;
@@ -262,7 +295,7 @@ void Codegen::GenerateSwitchArrayIf(llvm::Value *offset, llvm::Function *functio
 	irBuilder->SetInsertPoint(bb1);
 	Value *values[] = { irBuilder->getInt32(0), pcSubStartDiv4 };
 	auto addr = irBuilder->CreateLoad(irBuilder->CreateGEP(switchArray, values));
-	auto cmp = irBuilder->CreateICmpNE(addr, switchArrayNull);
+	auto cmp = irBuilder->CreateICmpNE(irBuilder->CreateExtractValue(addr, 0), switchArrayNull);
 	auto iff2 = irBuilder->CreateCondBr(cmp, bb2, bb3);
 
 	*pointer = addr;

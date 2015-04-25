@@ -12,6 +12,7 @@
 #include <llvm/Support/TargetRegistry.h>
 #include "Instruction.h"
 #include "Decode.h"
+#include <list>
 
 namespace llvm { class MDBuilder; }
 
@@ -25,9 +26,12 @@ public:
 	Codegen();
 	~Codegen();
 
+	void ColorBlocks();
+	void ColorBlock(CodeBlock* codeBlock, unsigned long long color);
+	void GenerateFunctionForColor(size_t color);
+	void InsertBlock(llvm::BasicBlock* block, llvm::Function* function);
 	void Run(const char *filename);
 	void GenerateGlobals();
-	void RegisterBasicBlock(llvm::BasicBlock *bb, u32 pc);
 
 	void GenerateEntryFunction();
 	void GeneratePresentFunction();
@@ -57,7 +61,7 @@ public:
 	std::unique_ptr<llvm::Module> module;
 	std::unique_ptr<llvm::IRBuilder<>> irBuilder;
 	std::unique_ptr<llvm::TargetMachine> nativeTarget;
-	std::unique_ptr<llvm::Function> function;
+	std::unique_ptr<llvm::Function> entryFunction;
 	std::unique_ptr<llvm::MDBuilder> mdBuilder;
 	llvm::MDNode *mdRegisters[(int)Register::Count], *mdRegistersGlobal, *mdRead32, *mdMemory;
 
@@ -72,7 +76,7 @@ public:
 	std::unique_ptr<const llvm::MCInstrInfo> armInstrInfo;
 	std::unique_ptr<const llvm::MCInstPrinter> armInstPrinter;
 	std::unique_ptr<llvm::MCContext> armMCContext;
-	llvm::FunctionType *codeBlockFunctionSignature;
+	llvm::FunctionType *entryFunctionSignature, *codeBlockFunctionSignature;
 	llvm::Triple nativeTriple;
 
 	Decoder *decoder;
@@ -82,10 +86,14 @@ public:
 
 	size_t switchArraySize;
 	llvm::Value *switchArray;
-	llvm::PointerType *switchArrayMemberType;
+	llvm::StructType *switchArrayMemberType;
 	llvm::Constant *switchArrayNull;
+
 private:
-	std::map<u32, CodeBlock *> blocks;
+	std::map<size_t, CodeBlock *> blocks;
+	std::map<size_t, llvm::Function *> blockFunction;
+	std::vector<std::list<CodeBlock *>> colorBlocks;
+	std::map<CodeBlock *, size_t> blockColors;
 	//std::vector<std::pair<llvm::BasicBlock *, u32>> blocks;
 	llvm::Value *registers;
 	void TranslateBlocks();

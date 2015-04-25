@@ -101,6 +101,7 @@ Jit::Private::Private(ARMul_State *state)
 
 bool Jit::CanRun(u32 pc)
 {
+	//return false;
 	return priv->CanRun(pc);
 }
 

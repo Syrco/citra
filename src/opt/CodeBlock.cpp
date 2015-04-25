@@ -29,7 +29,7 @@ BasicBlock *CodeBlock::NewInstructionBasicBlock(const char *str)
 {
 	stringstream ss;
 	ss << "block_" << hex << pc << "_" << str;
-	return BasicBlock::Create(*codegen->nativeContext, ss.str(), codegen->function.get());
+	return BasicBlock::Create(*codegen->nativeContext, ss.str());
 }
 bool CodeBlock::AddInstruction()
 {
@@ -44,9 +44,9 @@ bool CodeBlock::AddInstruction()
 	stringstream ss;
 	ss << "block_" << hex << pc;
 	if (disabled) ss << "_disabled";
-	basicBlock.reset(BasicBlock::Create(*codegen->nativeContext, ss.str(), codegen->function.get()));
+	basicBlock.reset(BasicBlock::Create(*codegen->nativeContext, ss.str()));
 	ss << "_loadblock";
-	loadBlock.reset(BasicBlock::Create(*codegen->nativeContext, ss.str(), codegen->function.get()));
+	loadBlock.reset(BasicBlock::Create(*codegen->nativeContext, ss.str()));
 
 	codegen->irBuilder->SetInsertPoint(loadBlock.get());
 	codegen->irBuilder->CreateBr(basicBlock.get());
@@ -99,7 +99,7 @@ void CodeBlock::Link(CodeBlock *prev, CodeBlock *next)
 {
 	auto codegen = prev->codegen;
 	next->prevs.push_back(prev);
-	next->nexts.push_back(next);
+	prev->nexts.push_back(next);
 
 	/*if (next->pc == 0x1001e0)
 	{
@@ -162,7 +162,7 @@ void CodeBlock::TerminateAt(u32 pc)
 	if (lastBlock->getTerminator()) __debugbreak();
 	codegen->irBuilder->SetInsertPoint(lastBlock);
 	codegen->Write(Register::PC, codegen->irBuilder->getInt32(pc));
-	codegen->irBuilder->CreateBr(codegen->outOfCodeblock);
+	//codegen->irBuilder->CreateBr(codegen->outOfCodeblock);
 
 	for (auto i = 0; i < registers.size(); ++i)
 	{
@@ -171,8 +171,8 @@ void CodeBlock::TerminateAt(u32 pc)
 }
 void CodeBlock::BeginCond(Condition cond)
 {
-	condPassed = BasicBlock::Create(*codegen->nativeContext, "Passed", codegen->function.get());;
-	condNotPassed = BasicBlock::Create(*codegen->nativeContext, "NotPassed", codegen->function.get());
+	condPassed = BasicBlock::Create(*codegen->nativeContext, "Passed");
+	condNotPassed = BasicBlock::Create(*codegen->nativeContext, "NotPassed");
 	codegen->decoder->CreateConditionPassed(this, cond, condPassed, condNotPassed);
 
 	codegen->irBuilder->SetInsertPoint(condPassed);
