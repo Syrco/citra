@@ -255,25 +255,28 @@ void Codegen::GenerateSwitchArray()
 	switchArraySize = TranslateSize / 4;	
 	PointerType *structElementsTypes[] = { IntegerType::getInt8PtrTy(*nativeContext), PointerType::get(codeBlockFunctionSignature, 0) };
 	switchArrayMemberType = StructType::get(*nativeContext, ArrayRef<Type*>((Type**)structElementsTypes, 2));
-	auto switchArrType = ArrayType::get(switchArrayMemberType, switchArraySize);
+	auto switchArrType = ArrayType::get(switchArrayMemberType, blocks.size());
+	auto switchIndirectArrayType = ArrayType::get(irBuilder->getInt32Ty(), switchArraySize);
 
-	Constant *nullStructElements[] = { ConstantPointerNull::get(structElementsTypes[0]), ConstantPointerNull::get(structElementsTypes[1]) };
-	switchArrayNull = ConstantPointerNull::get(structElementsTypes[0]);
-	//switchArrayMemberType->dump();
-	auto switchArrayNullStruct = ConstantStruct::get(switchArrayMemberType, ArrayRef<Constant*>(nullStructElements));
-	auto switchLocalArr = new Constant*[switchArraySize];
-	std::fill(switchLocalArr, switchLocalArr + switchArraySize, switchArrayNullStruct);
+	auto switchLocalArr = new Constant*[blocks.size()];
+	auto switchIndirectLocalArray = new Constant*[switchArraySize];
+	std::fill(switchIndirectLocalArray, switchIndirectLocalArray + switchArraySize, irBuilder->getInt32(-1));
+	auto index = 0;
 	for (auto color = 0; color < colorBlocks.size(); ++color)
 	{
 		for (auto block : colorBlocks[color])
 		{
 			Constant *structElements[] = { BlockAddress::get(block->loadBlock->getParent(), block->loadBlock.get()), block->loadBlock->getParent() };
-			switchLocalArr[(block->pc - TranslateStart) / 4] = ConstantStruct::get(switchArrayMemberType, ArrayRef<Constant*>(structElements));
+			switchLocalArr[index] = ConstantStruct::get(switchArrayMemberType, ArrayRef<Constant*>(structElements));
+			switchIndirectLocalArray[(block->pc - TranslateStart) / 4] = irBuilder->getInt32(index);
+			++index;
 		}
 	}
-	auto switchArrayConst = ConstantArray::get(switchArrType, ArrayRef<Constant*>(switchLocalArr, switchLocalArr + switchArraySize));
+	auto switchArrayConst = ConstantArray::get(switchArrType, ArrayRef<Constant*>(switchLocalArr, switchLocalArr + blocks.size()));
+	auto switchIndirectArrayConst = ConstantArray::get(switchIndirectArrayType, ArrayRef<Constant*>(switchIndirectLocalArray, switchIndirectLocalArray + switchArraySize));
 	delete switchLocalArr;
 	switchArray = new GlobalVariable(*module, switchArrayConst->getType(), true, GlobalValue::InternalLinkage, switchArrayConst, "SwitchArray");
+	switchIndirectArray = new GlobalVariable(*module, switchIndirectArrayConst->getType(), true, GlobalValue::InternalLinkage, switchIndirectArrayConst, "SwitchIndirectArray");
 }
 
 void Codegen::GenerateSwitchArrayIf(llvm::Value *offset, llvm::Function *function,
@@ -294,11 +297,12 @@ void Codegen::GenerateSwitchArrayIf(llvm::Value *offset, llvm::Function *functio
 
 	irBuilder->SetInsertPoint(bb1);
 	Value *values[] = { irBuilder->getInt32(0), pcSubStartDiv4 };
-	auto addr = irBuilder->CreateLoad(irBuilder->CreateGEP(switchArray, values));
-	auto cmp = irBuilder->CreateICmpNE(irBuilder->CreateExtractValue(addr, 0), switchArrayNull);
+	auto indirectIndex = irBuilder->CreateLoad(irBuilder->CreateInBoundsGEP(switchIndirectArray, values));
+	auto cmp = irBuilder->CreateICmpNE(indirectIndex, irBuilder->getInt32(-1));
 	auto iff2 = irBuilder->CreateCondBr(cmp, bb2, bb3);
-
-	*pointer = addr;
+	irBuilder->SetInsertPoint(bb2);
+	values[1] = indirectIndex;
+	*pointer = irBuilder->CreateLoad(irBuilder->CreateInBoundsGEP(switchArray, values));
 }
 
 void Codegen::WriteLL(const char *filename)
@@ -518,12 +522,16 @@ llvm::Value* Codegen::Read32(llvm::Value* address)
 {
 	auto read32 = irBuilder->CreateLoad(read32Global);
 	read32->setMetadata(LLVMContext::MD_tbaa, mdRead32);
-	Type *argsType[] = { read32->getType(), irBuilder->getInt32Ty() };
+	/*Type *argsType[] = { read32->getType(), irBuilder->getInt32Ty() };
 	auto inlineAsm = InlineAsm::get(FunctionType::get(irBuilder->getInt32Ty(), argsType, false),
 		"sub rsp, 0x20; call rdx; add rsp, 0x20", "={eax},{rdx},{rcx},~{rcx},~{rdx},~{r8},~{r9},~{r10},~{r11},~{xmm4},~{xmm5}", false, true, InlineAsm::AD_Intel);
-	auto value = irBuilder->CreateCall2(inlineAsm, read32, address);
-	/*auto value = irBuilder->CreateCall(read32, address);*/
+	auto value = irBuilder->CreateCall2(inlineAsm, read32, address);*/
+	auto value = irBuilder->CreateCall(read32, address);
 	value->setMetadata(LLVMContext::MD_tbaa, mdMemory);
+	value->setOnlyReadsMemory();
+#ifdef _WIN64
+	value->setCallingConv(CallingConv::X86_64_Win64);
+#endif
 	return value;
 }
 

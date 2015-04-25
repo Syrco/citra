@@ -86,6 +86,7 @@ public:
 
 	size_t switchArraySize;
 	llvm::Value *switchArray;
+	llvm::Value *switchIndirectArray;
 	llvm::StructType *switchArrayMemberType;
 	llvm::Constant *switchArrayNull;
 
