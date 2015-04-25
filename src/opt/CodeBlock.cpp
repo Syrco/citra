@@ -171,6 +171,12 @@ void CodeBlock::TerminateAt(u32 pc)
 }
 void CodeBlock::BeginCond(Condition cond)
 {
+	if (cond == Condition::AL)
+	{
+		condNotPassed = nullptr;
+		return;
+	}
+
 	condPassed = BasicBlock::Create(*codegen->nativeContext, "Passed");
 	condNotPassed = BasicBlock::Create(*codegen->nativeContext, "NotPassed");
 	codegen->decoder->CreateConditionPassed(this, cond, condPassed, condNotPassed);
@@ -180,6 +186,7 @@ void CodeBlock::BeginCond(Condition cond)
 }
 void CodeBlock::EndCond()
 {
+	if (!condNotPassed) return;
 	codegen->irBuilder->CreateBr(condNotPassed);
 	codegen->irBuilder->SetInsertPoint(condNotPassed);
 
