@@ -13,7 +13,7 @@ bool Cmp::CanCodegen(Codegen *codegen, u32 pc)
 	//return Cond() == Condition::AL;
 }
 
-bool Cmp::IsDisabled(class Codegen *codegen)
+bool Cmp::IsDisabled(class Codegen* codegen, u32 pc)
 {
 	return false;
 	//return Form() == CmpForms::Reg;

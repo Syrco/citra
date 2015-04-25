@@ -83,10 +83,12 @@ Jit::Private::Private(ARMul_State *state)
 	auto regsPtr = (u32 **)dyld->getSymbolAddress("Registers");
 	auto flagsPtr = (u32 **)dyld->getSymbolAddress("Flags");
 	auto read32Ptr = (decltype(&Memory::Read32)*)dyld->getSymbolAddress("Memory::Read32");
+	auto write32Ptr = (decltype(&Memory::Write32)*)dyld->getSymbolAddress("Memory::Write32");
 
 	*regsPtr = state->Reg;
 	*flagsPtr = &state->NFlag;
 	*read32Ptr = &Memory::Read32;
+	*write32Ptr = &Memory::Write32;
 
 	entry = (decltype(entry))dyld->getSymbolAddress("Run");
 	if (!entry) __debugbreak();
@@ -120,12 +122,13 @@ void Jit::Private::Run()
 	entry();
 }
 
+static size_t opcodes = 0;
+
 void Jit::BeforeFindBB(struct ARMul_State* cpu)
 {
 #if 0
 	static std::ofstream runRecord("run.txt", ios::binary);
 	if (!runRecord) __debugbreak();
-	static size_t opcodes = 0;
 	/*char buf[10];
 	for (auto i = 0; i < 16; ++i)
 	{
@@ -151,7 +154,7 @@ void Jit::BeforeFindBB(struct ARMul_State* cpu)
 	runRecord.write(buf, sizeof(buf) - 1);
 
 	++opcodes;
-	if (opcodes > 0x402d2)
+	if (opcodes > 0xb00000)
 	{
 		runRecord.flush();
 		runRecord.close();

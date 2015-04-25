@@ -15,7 +15,7 @@ bool Mov::CanCodegen(Codegen *codegen, u32 pc)
 	return true;
 }
 
-bool Mov::IsDisabled(Codegen *codegen)
+bool Mov::IsDisabled(class Codegen* codegen, u32 pc)
 {
 	//return Form() == MovForms::Imm0 || Form() == MovForms::Imm1;
 	//return Cond() != Condition::AL;

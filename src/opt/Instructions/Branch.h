@@ -15,5 +15,6 @@ public:
 	u32 Imm() { return U32Operand(1); }
 
 	virtual bool CanCodegen(class Codegen *codegen, u32 pc) override;
+	virtual bool IsDisabled(class Codegen *codegen, u32 pc) override;
 	virtual void DoCodegen(class Codegen *codegen, class CodeBlock *codeBlock) override;
 };

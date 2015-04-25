@@ -30,6 +30,6 @@ public:
 	Register Rm() { return RegOperand(4); }
 
 	virtual bool CanCodegen(class Codegen *codegen, u32 pc) override;
-	virtual bool IsDisabled(class Codegen *codegen) override;
+	virtual bool IsDisabled(class Codegen* codegen, u32 pc) override;
 	virtual void DoCodegen(class Codegen *codegen, class CodeBlock *codeBlock) override;
 };

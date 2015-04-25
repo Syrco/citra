@@ -70,7 +70,7 @@ protected:
 public:
 	virtual ~InstructionBase();
 	virtual bool Read(u32 inst) = 0;
-	virtual bool IsDisabled(class Codegen *codegen);
+	virtual bool IsDisabled(class Codegen* codegen, u32 pc);
 	virtual bool CanCodegen(class Codegen *codegen, u32 pc) = 0;
 	virtual void DoCodegen(class Codegen *codegen, class CodeBlock *codeBlock) = 0;
 };

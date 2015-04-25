@@ -36,10 +36,9 @@ bool CodeBlock::AddInstruction()
 	auto bytes = Memory::Read32(pc);
 	if (bytes == 0) return false;
 
-	auto instr = Instructions::Read(bytes);
+	auto instr = Instructions::Read(codegen, pc, bytes);
 	if (!instr) return false;
-	if (!instr->CanCodegen(codegen, pc)) return false;
-	disabled = instr->IsDisabled(codegen);
+	disabled = instr->IsDisabled(codegen, pc);
 
 	stringstream ss;
 	ss << "block_" << hex << pc;
@@ -57,6 +56,19 @@ bool CodeBlock::AddInstruction()
 		instr->DoCodegen(codegen, this);
 	}
 	lastBlock = codegen->irBuilder->GetInsertBlock();
+	/*if (wrotePC)
+	{
+		codegen->irBuilder->SetInsertPoint(lastBlock);
+		codegen->Write(Register::PC, pcValue);
+		//auto call = codegen->irBuilder->CreateCall(codegen->entryFunction.get());
+		//call->setTailCall(true);
+		codegen->irBuilder->CreateRetVoid();
+
+		for (auto i = 0; i < registers.size(); ++i)
+		{
+			Spill(i);
+		}
+	}*/
 
 	return true;
 }
@@ -101,11 +113,6 @@ void CodeBlock::Link(CodeBlock *prev, CodeBlock *next)
 	next->prevs.push_back(prev);
 	prev->nexts.push_back(next);
 
-	/*if (next->pc == 0x1001e0)
-	{
-		next->basicBlock->dump();
-	}*/
-
 	for (auto i = 0; i < prev->registers.size(); ++i)
 	{
 		auto prevR = prev->registers[i];
@@ -120,12 +127,6 @@ void CodeBlock::Link(CodeBlock *prev, CodeBlock *next)
 				next->registersPhi[i]->addIncoming(prev->Read((Register)i), prev->lastBlock);
 		}
 	}
-
-	/*if (next->pc == 0x1001e0)
-	{
-		next->basicBlock->dump();
-		__debugbreak();
-	}*/
 
 	if (prev->lastBlock->getTerminator()) __debugbreak();
 	codegen->irBuilder->SetInsertPoint(prev->lastBlock);
@@ -153,7 +154,10 @@ void CodeBlock::Spill(int reg)
 	}
 	else
 	{
-		codegen->irBuilder->SetInsertPoint(lastBlock, --lastBlock->end());
+		auto pt = lastBlock->end();
+		if (lastBlock->getTerminator()) --pt;
+		if (wrotePC) --pt;
+		codegen->irBuilder->SetInsertPoint(lastBlock, pt);
 		codegen->Write((Register)reg, val);
 	}
 }
@@ -168,6 +172,25 @@ void CodeBlock::TerminateAt(u32 pc)
 	{
 		Spill(i);
 	}
+}
+void CodeBlock::TerminateWritePC()
+{
+	if (lastBlock->getTerminator()) __debugbreak();
+	codegen->irBuilder->SetInsertPoint(lastBlock);
+	//codegen->Write(Register::PC, pcValue);
+	auto call = codegen->irBuilder->CreateCall(codegen->reentryFunction.get(), pcValue);
+	call->setTailCall(true);
+	codegen->irBuilder->CreateRetVoid();
+
+	for (auto i = 0; i < registers.size(); ++i)
+	{
+		Spill(i);
+	}
+}
+void CodeBlock::WritePC(llvm::Value *value)
+{
+	wrotePC = true;
+	pcValue = value;
 }
 void CodeBlock::BeginCond(Condition cond)
 {

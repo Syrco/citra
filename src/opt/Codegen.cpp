@@ -53,38 +53,12 @@ Codegen::Codegen() : decoder(new Decoder(this))
 	module = llvm::make_unique<Module>("Module", *nativeContext);
 	module->setTargetTriple(nativeTripleStr);
 	irBuilder = llvm::make_unique<IRBuilder<>>(*nativeContext);
-
-	mdBuilder.reset(new MDBuilder(*nativeContext));
-	auto tbaaRoot = mdBuilder->createTBAARoot("Root");
-	for (auto i = 0; i < (int)Register::Count; ++i)
-	{
-		stringstream ss;
-		ss << "Register" << i;
-		mdRegisters[i] = mdBuilder->createTBAAScalarTypeNode(ss.str().c_str(), tbaaRoot);
-	}
-	mdRegistersGlobal = mdBuilder->createTBAAScalarTypeNode("RegistersGlobal", tbaaRoot);
-	mdRead32 = mdBuilder->createTBAAScalarTypeNode("Read32", tbaaRoot);
-	mdMemory = mdBuilder->createTBAAScalarTypeNode("Memory", tbaaRoot);
-
-	entryFunctionSignature = FunctionType::get(Type::getVoidTy(*nativeContext), false);
-	codeBlockFunctionSignature = FunctionType::get(Type::getVoidTy(*nativeContext), Type::getInt8PtrTy(*nativeContext), false);
 }
 
 Codegen::~Codegen()
 {
 
 }
-
-struct BinSearch
-{
-	size_t min;
-	size_t mid;
-	size_t max;
-	BinSearch(size_t max) : min(0), mid(max / 2), max(max) { }
-	BinSearch(size_t min, size_t max) : min(min), mid((min + max) / 2), max(max) { }
-	BinSearch l() { return BinSearch(min, mid); }
-	BinSearch r() { return BinSearch(mid, max); }
-};
 
 const size_t Codegen::TranslateSize = 0x24000;
 //const size_t Codegen::TranslateSize = 0x40;
@@ -98,18 +72,42 @@ const size_t Codegen::TranslateEnd = TranslateStart + TranslateSize;
 
 void Codegen::Run(const char *filename)
 {
+	GenerateMetadata();
 	GenerateGlobals();
 	TranslateBlocks();
 	ColorBlocks();
 	GenerateSwitchArray();
-	GenerateEntryFunction();
+	GenerateEntryOrReentryFunction(true);
+	GenerateEntryOrReentryFunction(false);
+	//GenerateEntryFunction();
+	//GenerateReentryFunction();
 	GeneratePresentFunction();
 
 	WriteFile(filename);
 }
 
+void Codegen::GenerateMetadata()
+{
+	mdBuilder.reset(new MDBuilder(*nativeContext));
+	auto tbaaRoot = mdBuilder->createTBAARoot("Root");
+	for (auto i = 0; i < (int)Register::Count; ++i)
+	{
+		stringstream ss;
+		ss << "Register" << i;
+		mdRegisters[i] = mdBuilder->createTBAAScalarTypeNode(ss.str().c_str(), tbaaRoot);
+	}
+	mdRegistersGlobal = mdBuilder->createTBAAScalarTypeNode("RegistersGlobal", tbaaRoot);
+	mdRead32 = mdBuilder->createTBAAScalarTypeNode("Read32", tbaaRoot);
+	mdMemory = mdBuilder->createTBAAScalarTypeNode("Memory", tbaaRoot);
+	mdSwitchArrays = mdBuilder->createTBAAScalarTypeNode("SwitchArrays", tbaaRoot);
+}
+
 void Codegen::GenerateGlobals()
 {
+	entryFunctionSignature = FunctionType::get(Type::getVoidTy(*nativeContext), false);
+	codeBlockFunctionSignature = FunctionType::get(Type::getVoidTy(*nativeContext), Type::getInt8PtrTy(*nativeContext), false);
+	auto reentryFunctionSignature = FunctionType::get(Type::getVoidTy(*nativeContext), irBuilder->getInt32Ty(), false);
+
 	auto i32ptr = Type::getInt32PtrTy(*nativeContext);
 	auto i1ptr = Type::getInt1PtrTy(*nativeContext);
 	registersGlobal = new GlobalVariable(*module, i32ptr, false, GlobalValue::ExternalLinkage, ConstantPointerNull::get(i32ptr), "Registers", nullptr, GlobalValue::NotThreadLocal, 0, true);
@@ -117,7 +115,16 @@ void Codegen::GenerateGlobals()
 
 	auto read32Type = FunctionType::get(irBuilder->getInt32Ty(), { irBuilder->getInt32Ty() }, false);
 	auto read32PtrType = PointerType::get(read32Type, 0);
-	read32Global = new GlobalVariable(*module, read32PtrType, false, GlobalValue::ExternalLinkage, ConstantPointerNull::get(read32PtrType), "Memory::Read32", nullptr, GlobalValue::NotThreadLocal, 0, true);
+	Type *write32Params[] = { irBuilder->getInt32Ty(), irBuilder->getInt32Ty() };
+	auto write32Type = FunctionType::get(irBuilder->getInt32Ty(), write32Params, false);
+	auto write32PtrType = PointerType::get(write32Type, 0);
+	read32Global = new GlobalVariable(*module, read32PtrType, false, GlobalValue::ExternalLinkage, ConstantPointerNull::get(read32PtrType),
+		"Memory::Read32", nullptr, GlobalValue::NotThreadLocal, 0, true);
+	write32Global = new GlobalVariable(*module, write32PtrType, false, GlobalValue::ExternalLinkage, ConstantPointerNull::get(write32PtrType),
+		"Memory::Write32", nullptr, GlobalValue::NotThreadLocal, 0, true);
+
+	entryFunction.reset(Function::Create(entryFunctionSignature, GlobalValue::LinkageTypes::ExternalLinkage, "Run", module.get()));
+	reentryFunction.reset(Function::Create(reentryFunctionSignature, GlobalValue::LinkageTypes::PrivateLinkage, "Reenter", module.get()));
 }
 
 void Codegen::ColorBlocks()
@@ -134,7 +141,7 @@ void Codegen::ColorBlocks()
 		color++;
 	}
 
-	cout << color << " block colors" << endl;
+	cout << hex << color << " block colors" << endl;
 }
 
 void Codegen::ColorBlock(CodeBlock *codeBlock, size_t color)
@@ -197,32 +204,37 @@ void Codegen::InsertBlock(BasicBlock *block, Function *function)
 	}
 }
 
-void Codegen::GenerateEntryFunction()
+void Codegen::GenerateEntryOrReentryFunction(bool entry)
 {
-	entryFunction.reset(Function::Create(codeBlockFunctionSignature, GlobalValue::LinkageTypes::ExternalLinkage, "Run", module.get()));
+	auto function = entry ? entryFunction.get() : reentryFunction.get();
 
-	auto switchBasicBlock = BasicBlock::Create(*nativeContext, "switch", entryFunction.get());
-	auto exitBasicBlock = BasicBlock::Create(*nativeContext, "exit", entryFunction.get());
-	inToCodeBlock = BasicBlock::Create(*nativeContext, "notNull", entryFunction.get());
+	auto switchBasicBlock = BasicBlock::Create(*nativeContext, "switch", function);
+	auto noCaseBasicBlock = BasicBlock::Create(*nativeContext, "noCase", function);
+	auto caseBasicBlock = BasicBlock::Create(*nativeContext, "case", function);
+	auto arg = !entry ? &*function->arg_begin() : nullptr;
 
-	irBuilder->SetInsertPoint(inToCodeBlock);
+	irBuilder->SetInsertPoint(caseBasicBlock);
 
 	Value *outValue;
 
 	irBuilder->SetInsertPoint(switchBasicBlock);
-	auto pc = Read(Register::PC);
-	GenerateSwitchArrayIf(pc, entryFunction.get(),
-		switchBasicBlock, inToCodeBlock, exitBasicBlock,
+	auto pc = entry ? Read(Register::PC) : arg;
+	GenerateSwitchArrayIf(pc, function,
+		switchBasicBlock, caseBasicBlock, noCaseBasicBlock,
 		&outValue);
 
-	irBuilder->SetInsertPoint(inToCodeBlock);
+	irBuilder->SetInsertPoint(caseBasicBlock);
 	auto block = irBuilder->CreateExtractValue(outValue, 0);
 	auto func = irBuilder->CreateExtractValue(outValue, 1);
-	irBuilder->CreateCall(func, block);
+	auto call = irBuilder->CreateCall(func, block);
+	call->setTailCall();
+	irBuilder->CreateRetVoid();
 
-	irBuilder->CreateBr(exitBasicBlock);
-
-	irBuilder->SetInsertPoint(exitBasicBlock);
+	irBuilder->SetInsertPoint(noCaseBasicBlock);
+	if (!entry)
+	{
+		Write(Register::PC, arg);
+	}
 	irBuilder->CreateRetVoid();
 }
 
@@ -298,11 +310,14 @@ void Codegen::GenerateSwitchArrayIf(llvm::Value *offset, llvm::Function *functio
 	irBuilder->SetInsertPoint(bb1);
 	Value *values[] = { irBuilder->getInt32(0), pcSubStartDiv4 };
 	auto indirectIndex = irBuilder->CreateLoad(irBuilder->CreateInBoundsGEP(switchIndirectArray, values));
+	indirectIndex->setMetadata(LLVMContext::MD_tbaa, mdSwitchArrays);
 	auto cmp = irBuilder->CreateICmpNE(indirectIndex, irBuilder->getInt32(-1));
 	auto iff2 = irBuilder->CreateCondBr(cmp, bb2, bb3);
 	irBuilder->SetInsertPoint(bb2);
 	values[1] = indirectIndex;
-	*pointer = irBuilder->CreateLoad(irBuilder->CreateInBoundsGEP(switchArray, values));
+	auto value = irBuilder->CreateLoad(irBuilder->CreateInBoundsGEP(switchArray, values));
+	value->setMetadata(LLVMContext::MD_tbaa, mdSwitchArrays);
+	*pointer = value;
 }
 
 void Codegen::WriteLL(const char *filename)
@@ -418,6 +433,7 @@ void Codegen::TranslateBlocks()
 		auto block = p.second;
 		if (!block->jumpAddress) continue;
 		if (block->disabled) continue;
+		if (block->wrotePC) continue;
 		auto i = blocks.find(block->jumpAddress);
 		if (i != blocks.end())
 		{
@@ -447,7 +463,11 @@ void Codegen::TranslateBlocks()
 	}
 	for (auto block : blocks)
 	{
-		if (!block.second->jumpAddress)
+		if (block.second->wrotePC)
+		{
+			block.second->TerminateWritePC();
+		}
+		else if (!block.second->jumpAddress)
 		{
 			block.second->Terminate();
 			++terminated;
@@ -522,10 +542,6 @@ llvm::Value* Codegen::Read32(llvm::Value* address)
 {
 	auto read32 = irBuilder->CreateLoad(read32Global);
 	read32->setMetadata(LLVMContext::MD_tbaa, mdRead32);
-	/*Type *argsType[] = { read32->getType(), irBuilder->getInt32Ty() };
-	auto inlineAsm = InlineAsm::get(FunctionType::get(irBuilder->getInt32Ty(), argsType, false),
-		"sub rsp, 0x20; call rdx; add rsp, 0x20", "={eax},{rdx},{rcx},~{rcx},~{rdx},~{r8},~{r9},~{r10},~{r11},~{xmm4},~{xmm5}", false, true, InlineAsm::AD_Intel);
-	auto value = irBuilder->CreateCall2(inlineAsm, read32, address);*/
 	auto value = irBuilder->CreateCall(read32, address);
 	value->setMetadata(LLVMContext::MD_tbaa, mdMemory);
 	value->setOnlyReadsMemory();
@@ -533,6 +549,17 @@ llvm::Value* Codegen::Read32(llvm::Value* address)
 	value->setCallingConv(CallingConv::X86_64_Win64);
 #endif
 	return value;
+}
+
+void Codegen::Write32(llvm::Value* address, llvm::Value* value)
+{
+	auto write32 = irBuilder->CreateLoad(write32Global);
+	write32->setMetadata(LLVMContext::MD_tbaa, mdRead32);
+	auto call = irBuilder->CreateCall2(write32, address, value);
+	call->setMetadata(LLVMContext::MD_tbaa, mdMemory);
+#ifdef _WIN64
+	call->setCallingConv(CallingConv::X86_64_Win64);
+#endif
 }
 
 bool Codegen::CanCond(Condition cond)

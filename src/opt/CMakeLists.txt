@@ -5,10 +5,11 @@ set(SRCS
 			Instruction.cpp
 			Decode.cpp
 			
-			Mov.cpp
-			Branch.cpp
-			Cmp.cpp
-			Ldr.cpp
+			Instructions/Mov.cpp
+			Instructions/Branch.cpp
+			Instructions/Cmp.cpp
+			Instructions/Ldr.cpp
+			Instructions/Arith.cpp
             )
 set(HEADERS
             Codegen.h
@@ -17,14 +18,16 @@ set(HEADERS
 			Instructions.h
 			Decode.h
 			
-			Mov.h
-			Branch.h
-			Cmp.h
-			Ldr.h
+			Instructions/Mov.h
+			Instructions/Branch.h
+			Instructions/Cmp.h
+			Instructions/Ldr.h
+			Instructions/Arith.h
             )
 			
 create_directory_groups(${SRCS} ${HEADERS})
 
+include_directories(.)
 add_executable(copt ${SRCS} ${HEADERS})
 target_link_libraries(copt ${llvm_libs})
 target_link_libraries(copt core common video_core)

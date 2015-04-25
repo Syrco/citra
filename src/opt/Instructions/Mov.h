@@ -40,5 +40,5 @@ public:
 
 	virtual bool CanCodegen(class Codegen *codegen, u32 pc) override;
 	virtual void DoCodegen(class Codegen *codegen, class CodeBlock *codeBlock) override;
-	virtual bool IsDisabled(class Codegen *codegen) override;
+	virtual bool IsDisabled(class Codegen* codegen, u32 pc) override;
 };

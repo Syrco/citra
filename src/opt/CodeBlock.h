@@ -21,10 +21,12 @@ public:
 	static void Link(CodeBlock *prev, CodeBlock *next);
 	void Terminate();
 	void JumpFailed();
+	void TerminateWritePC();
 	llvm::BasicBlock *NewInstructionBasicBlock(const char *str = "");
 
 	llvm::Value *Read(Register reg);
 	llvm::Value *Write(Register reg, llvm::Value *value);
+	void WritePC(llvm::Value *value);
 
 	void BeginCond(Condition cond);
 	void EndCond();
@@ -44,6 +46,8 @@ public:
 	//std::array<llvm::Value *, (size_t)Register::Count> conditionalStores;
 	u32 jumpAddress = 0;
 	bool disabled;
+	bool wrotePC = false;
+	llvm::Value *pcValue;
 private:
 	void TerminateAt(u32 pc);
 	void Spill(int reg);

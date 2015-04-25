@@ -184,7 +184,7 @@ ResultCarryOverflow Decoder::AddWithCarry3232(llvm::Value *x, llvm::Value *y, ll
 	return{ ib->CreateExtractValue(uadd2, 0), carry, overflow };*/
 }
 
-void Decoder::CreateConditionPassed(class CodeBlock *codeBlock, Condition cond, llvm::BasicBlock *passed, llvm::BasicBlock *notPassed)
+llvm::Value *Decoder::ConditionPassed(class CodeBlock *codeBlock, Condition cond)
 {
 	llvm::Value *pred;
 	bool not = false;
@@ -210,6 +210,10 @@ void Decoder::CreateConditionPassed(class CodeBlock *codeBlock, Condition cond, 
 	}
 
 	if (not) pred = codegen->irBuilder->CreateNot(pred);
+	return pred;
+}
 
-	codegen->irBuilder->CreateCondBr(pred, passed, notPassed);
+void Decoder::CreateConditionPassed(class CodeBlock *codeBlock, Condition cond, llvm::BasicBlock *passed, llvm::BasicBlock *notPassed)
+{
+	codegen->irBuilder->CreateCondBr(ConditionPassed(codeBlock, cond), passed, notPassed);
 }

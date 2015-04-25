@@ -8,7 +8,7 @@ InstructionBase::~InstructionBase()
 {
 }
 
-bool InstructionBase::IsDisabled(class Codegen *codegen)
+bool InstructionBase::IsDisabled(class Codegen* codegen, u32 pc)
 {
 	return false;
 }

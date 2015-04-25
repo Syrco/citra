@@ -16,6 +16,17 @@
 
 namespace llvm { class MDBuilder; }
 
+struct BinSearch
+{
+	size_t min;
+	size_t mid;
+	size_t max;
+	BinSearch(size_t max) : min(0), mid(max / 2), max(max) { }
+	BinSearch(size_t min, size_t max) : min(min), mid((min + max) / 2), max(max) { }
+	BinSearch l() { return BinSearch(min, mid); }
+	BinSearch r() { return BinSearch(mid, max); }
+};
+
 class Codegen
 {
 public:
@@ -31,9 +42,10 @@ public:
 	void GenerateFunctionForColor(size_t color);
 	void InsertBlock(llvm::BasicBlock* block, llvm::Function* function);
 	void Run(const char *filename);
+	void GenerateMetadata();
 	void GenerateGlobals();
 
-	void GenerateEntryFunction();
+	void GenerateEntryOrReentryFunction(bool entry);
 	void GeneratePresentFunction();
 	void GenerateSwitchArray();
 	void GenerateSwitchArrayIf(llvm::Value *offset, llvm::Function *function,
@@ -55,6 +67,7 @@ public:
 	llvm::Value *Read(Register reg);
 	llvm::Value *Write(Register reg, llvm::Value *val);
 	llvm::Value* Read32(llvm::Value* address);
+	void Write32(llvm::Value* address, llvm::Value* value);
 
 	// Native
 	std::unique_ptr<llvm::LLVMContext> nativeContext;
@@ -62,8 +75,9 @@ public:
 	std::unique_ptr<llvm::IRBuilder<>> irBuilder;
 	std::unique_ptr<llvm::TargetMachine> nativeTarget;
 	std::unique_ptr<llvm::Function> entryFunction;
+	std::unique_ptr<llvm::Function> reentryFunction;
 	std::unique_ptr<llvm::MDBuilder> mdBuilder;
-	llvm::MDNode *mdRegisters[(int)Register::Count], *mdRegistersGlobal, *mdRead32, *mdMemory;
+	llvm::MDNode *mdRegisters[(int)Register::Count], *mdRegistersGlobal, *mdRead32, *mdMemory, *mdSwitchArrays;
 
 
 	// Arm
@@ -81,8 +95,7 @@ public:
 
 	Decoder *decoder;
 
-	llvm::GlobalVariable *registersGlobal, *flagsGlobal, *read32Global;
-	llvm::BasicBlock *outOfCodeblock, *inToCodeBlock;
+	llvm::GlobalVariable *registersGlobal, *flagsGlobal, *read32Global, *write32Global;
 
 	size_t switchArraySize;
 	llvm::Value *switchArray;

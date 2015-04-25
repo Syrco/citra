@@ -48,5 +48,6 @@ public:
 	llvm::Value *ARMExpandImm(u32 imm);
 	ResultCarry ARMExpandImm_C(u32 imm, llvm::Value *carry);
 	ResultCarryOverflow AddWithCarry3232(llvm::Value *x, llvm::Value *y, llvm::Value *carry_in);
+	llvm::Value *ConditionPassed(class CodeBlock *codeBlock, Condition cond);
 	void CreateConditionPassed(class CodeBlock *codeBlock, Condition cond, llvm::BasicBlock *passed, llvm::BasicBlock *notPassed);
 };
