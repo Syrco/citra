@@ -53,7 +53,8 @@ static std::shared_ptr<Logger> global_logger;
         CLS(Render) \
         SUB(Render, Software) \
         SUB(Render, OpenGL) \
-        CLS(Loader)
+        CLS(Loader) \
+        CLS(BinaryTranslator)
 
 Logger::Logger() {
     // Register logging classes so that they can be queried at runtime

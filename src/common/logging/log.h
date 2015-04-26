@@ -74,6 +74,7 @@ enum class Class : ClassType {
     Render_Software,            ///< Software renderer backend
     Render_OpenGL,              ///< OpenGL backend
     Loader,                     ///< ROM loader
+	BinaryTranslator,           ///< Binary translator
 
     Count ///< Total number of logging classes
 };

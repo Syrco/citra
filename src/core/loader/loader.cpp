@@ -24,6 +24,10 @@ const std::initializer_list<Kernel::AddressMapping> default_address_mappings = {
     { 0x1FF70000,   0x8000, true  }, // part of DSP RAM
     { 0x1F000000, 0x600000, false }, // entire VRAM
 };
+u32 ROMCodeStart = 0;
+u32 ROMCodeSize = 0;
+u32 ROMReadOnlyDataStart = 0;
+u32 ROMReadOnlyDataSize = 0;
 
 /**
  * Identifies the type of a bootable file
