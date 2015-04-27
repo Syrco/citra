@@ -1,4 +1,8 @@
 #include "ModuleGen.h"
+#include "Disassembler.h"
+#include "core/loader/loader.h"
+#include "core/mem_map.h"
+#include "Instructions/Instruction.h"
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalVariable.h>
 
@@ -19,6 +23,8 @@ void ModuleGen::Run()
     GenerateGlobals();
     GenerateCanRunFunction();
     GenerateRunFunction();
+
+    GenerateBlocks();
 }
 
 void ModuleGen::GenerateGlobals()
@@ -49,4 +55,16 @@ void ModuleGen::GenerateRunFunction()
 
     ir_builder->SetInsertPoint(basic_block);
     ir_builder->CreateRetVoid();
+}
+
+void ModuleGen::GenerateBlocks()
+{
+    for (auto i = Loader::ROMCodeStart; i <= Loader::ROMCodeStart + Loader::ROMCodeSize - 4; i += 4)
+    {
+        auto instruction = Disassembler::Disassemble(Memory::Read32(i), i);
+        if (instruction != nullptr)
+        {
+            LOG_DEBUG(BinaryTranslator, "Instruction at %08x", i);
+        }
+    }
 }

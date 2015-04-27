@@ -1,12 +1,20 @@
 #include "Instruction.h"
 #include <cassert>
 
-Instruction::Instruction(u32 instruction, u32 address) : instruction(instruction), address(address)
+Instruction::Instruction()
 {
 }
 
 Instruction::~Instruction()
 {
+}
+
+bool Instruction::Read(u32 instruction, u32 address)
+{
+    this->instruction = instruction;
+    this->address = address;
+    // Call the read of derived class
+    return Decode();
 }
 
 bool Instruction::ReadFields(const std::initializer_list<FieldDefObject> &fields)

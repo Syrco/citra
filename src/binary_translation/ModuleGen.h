@@ -15,6 +15,7 @@ public:
     void GenerateGlobals();
     void GenerateCanRunFunction();
     void GenerateRunFunction();
+    void GenerateBlocks();
 private:
     std::unique_ptr<llvm::IRBuilder<>> ir_builder;
     llvm::Module *module;

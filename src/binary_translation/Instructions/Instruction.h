@@ -7,15 +7,19 @@ class Instruction
 protected:
     class FieldDefObject;
 public:
-    Instruction(u32 instruction, u32 address);
+    Instruction();
     virtual ~Instruction();
 
     /*
      * Reads the instruction.
      * Returns true on success, or false otherwise
      */
-    virtual bool Read() = 0;
+    bool Read(u32 instruction, u32 address);
 protected:
+    /*
+     * Derived classes should override this, and implement it by calling ReadFields
+     */
+    virtual bool Decode() = 0;
     /*
      * Reads fields from the instruction
      * The fields come most significant first

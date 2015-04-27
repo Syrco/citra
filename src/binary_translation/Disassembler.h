@@ -3,7 +3,7 @@
 
 class Instruction;
 
-class Disassmbler
+class Disassembler
 {
 public:
     /*
@@ -32,8 +32,8 @@ public:
 private:
     static Instruction *Create(u32 instruction, u32 address)
     {
-        auto result = new DerivedInstruction(instruction, address);
-        if (!result->Read())
+        auto result = new DerivedInstruction();
+        if (!result->Read(instruction, address))
         {
             delete result;
             return nullptr;
