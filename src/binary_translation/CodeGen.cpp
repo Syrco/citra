@@ -1,5 +1,8 @@
 #include "CodeGen.h"
+#include "ModuleGen.h"
+
 #include "core/loader/loader.h"
+
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/Host.h>
 #include <llvm/Target/TargetSubtargetInfo.h>
@@ -61,12 +64,12 @@ void CodeGen::IntializeLLVM()
 
     module = make_unique<Module>("Module", getGlobalContext());
     module->setTargetTriple(triple_string);
-    ir_builder = make_unique<IRBuilder<>>(getGlobalContext());
 }
 
 void CodeGen::GenerateModule()
 {
-    // TODO:
+    moduleGenerator = std::make_unique<ModuleGen>(module.get());
+    moduleGenerator->Run();
 }
 
 void CodeGen::GenerateDebugFiles()
@@ -83,6 +86,7 @@ void CodeGen::GenerateDebugFiles()
     raw_os_ostream stream(file);
 
     module->print(stream, nullptr);
+    stream.flush();
     file.close();
     LOG_INFO(BinaryTranslator, "Done");
 }
@@ -108,9 +112,14 @@ void CodeGen::OptimizeAndGenerate()
     PassManagerBuilder pass_manager_builder;
 
     FunctionPassManager function_pass_manager(module.get());
+    PassManager pass_manager;
 
     module->setDataLayout(target_machine->getSubtargetImpl()->getDataLayout());
 
+    pass_manager.add(createVerifierPass());
+    pass_manager.add(new TargetLibraryInfo(*triple));
+    pass_manager.add(new DataLayoutPass());
+    target_machine->addAnalysisPasses(pass_manager);
     function_pass_manager.add(new DataLayoutPass());
     target_machine->addAnalysisPasses(function_pass_manager);
 
@@ -121,6 +130,7 @@ void CodeGen::OptimizeAndGenerate()
     pass_manager_builder.SLPVectorize = true;
 
     pass_manager_builder.populateFunctionPassManager(function_pass_manager);
+    pass_manager_builder.populateModulePassManager(pass_manager);
 
     LOG_INFO(BinaryTranslator, "Optimizing functions");
     function_pass_manager.doInitialization();
@@ -129,18 +139,7 @@ void CodeGen::OptimizeAndGenerate()
     function_pass_manager.doFinalization();
     LOG_INFO(BinaryTranslator, "Done");
 
-    PassManager pass_manager;
-
     pass_manager.add(createVerifierPass());
-    pass_manager.add(new TargetLibraryInfo(*triple));
-    pass_manager.add(new DataLayoutPass());
-    target_machine->addAnalysisPasses(pass_manager);
-    pass_manager_builder.populateModulePassManager(pass_manager);
-    pass_manager.add(createVerifierPass());
-
-    LOG_INFO(BinaryTranslator, "Optimizing module");
-    pass_manager.run(*module);
-    LOG_INFO(BinaryTranslator, "Done");
 
     MCContext *context;
     std::ofstream file(output_object_filename, std::ios::binary);
@@ -157,6 +156,7 @@ void CodeGen::OptimizeAndGenerate()
     }
     LOG_INFO(BinaryTranslator, "Generating code");
     pass_manager.run(*module);
+    stream.flush();
     file.close();
     LOG_INFO(BinaryTranslator, "Done");
 }

@@ -1,9 +1,11 @@
 set(SRCS
 			main.cpp
 			CodeGen.cpp
+			ModuleGen.cpp
             )
 set(HEADERS
 			CodeGen.h
+			ModuleGen.h
             )
 			
 create_directory_groups(${SRCS} ${HEADERS})

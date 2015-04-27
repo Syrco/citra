@@ -7,6 +7,8 @@ namespace llvm
     class Module;
 }
 
+class ModuleGen;
+
 /*
  * Holds alls the basic llvm structures
  */
@@ -26,8 +28,9 @@ private:
 	const char *output_object_filename;
 	const char *output_debug_filename;
 
+    std::unique_ptr<ModuleGen> moduleGenerator;
+
     std::unique_ptr<llvm::Triple> triple;
     std::unique_ptr<llvm::TargetMachine> target_machine;
     std::unique_ptr<llvm::Module> module;
-    std::unique_ptr<llvm::IRBuilder<>> ir_builder;
 };
