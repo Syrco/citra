@@ -5,9 +5,28 @@
 #include "core/mem_map.h"
 #include "core/loader/loader.h"
 #include "codegen.h"
+#include <llvm/Support/CommandLine.h>
+
+namespace cl = llvm::cl;
+
+cl::opt<std::string> InputFilename(cl::Positional, cl::Required, cl::desc("<input rom filename>"));
+cl::opt<std::string> OutputFilename(cl::Positional, cl::Required, cl::desc("<output object filename>"));
+cl::opt<std::string> DebugFilename(cl::Positional, cl::Optional, cl::desc("<debug filename>"));
 
 int main(int argc, const char *const *argv)
 {
+    // Remove all llvm options
+    llvm::StringMap<cl::Option *> options;
+    cl::getRegisteredOptions(options);
+    for (auto i = options.begin(); i != options.end(); ++i)
+    {
+        if (i->getValue() != &InputFilename && i->getValue() != &OutputFilename && i->getValue() != &DebugFilename)
+        {
+            i->getValue()->setHiddenFlag(cl::Hidden);
+        }
+    }
+    cl::ParseCommandLineOptions(argc, argv);
+
 	std::shared_ptr<Log::Logger> logger = Log::InitGlobalLogger();
 	Log::Filter log_filter(Log::Level::Debug);
 	Log::SetFilter(&log_filter);
@@ -17,15 +36,9 @@ int main(int argc, const char *const *argv)
 		logging_thread.join();
 	});
 
-	if (argc < 3)
-	{
-        LOG_CRITICAL(BinaryTranslator, "Usage: binary_translate <input_rom> <output_object> [<output_debug>]");
-		return -1;
-	}
-
-	auto input_rom = argv[1];
-	auto output_object = argv[2];
-	auto output_debug = argc > 3 ? argv[3] : nullptr;
+    auto input_rom = InputFilename.c_str();
+    auto output_object = OutputFilename.c_str();
+    auto output_debug = DebugFilename.getNumOccurrences() ? DebugFilename.c_str() : nullptr;
 
 	Core::Init();
 	Memory::Init();
