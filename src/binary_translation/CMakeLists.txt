@@ -2,10 +2,14 @@ set(SRCS
 			main.cpp
 			CodeGen.cpp
 			ModuleGen.cpp
+			Disassembler.cpp
+			Instruction.cpp
             )
 set(HEADERS
 			CodeGen.h
 			ModuleGen.h
+			Disassembler.h
+			Instruction.h
             )
 			
 create_directory_groups(${SRCS} ${HEADERS})
