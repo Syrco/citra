@@ -8,17 +8,14 @@ static RegisterInstruction<Branch> register_instruction;
 bool Branch::Decode()
 {
     // B imm, BL imm
-    if (ReadFields({ FieldDef<4>(&cond), FieldDef<3>(5), FieldDef<1>(&link), FieldDef<24>(&imm24) }))
+    if (ReadFields({ CondDef(), FieldDef<3>(5), FieldDef<1>(&link), FieldDef<24>(&imm24) }))
     {
-        if (cond != Condition::AL) return false;
-
         form = Form::Immediate;
         return true;
     }
     // BLX reg
-    if (ReadFields({ FieldDef<4>(&cond), FieldDef<24>(0x12fff3), FieldDef<4>(&rm)}))
+    if (ReadFields({ CondDef(), FieldDef<24>(0x12fff3), FieldDef<4>(&rm) }))
     {
-        if (cond != Condition::AL) return false;
         if (rm == Register::PC) return false;
 
         link = true;
@@ -28,7 +25,7 @@ bool Branch::Decode()
     return false;
 }
 
-void Branch::GenerateCode(InstructionBlock* instruction_block)
+void Branch::GenerateInstructionCode(InstructionBlock* instruction_block)
 {
     auto ir_builder = instruction_block->Module()->IrBuilder();
     if (link)

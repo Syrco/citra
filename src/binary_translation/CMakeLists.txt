@@ -18,6 +18,7 @@ set(HEADERS
 			InstructionBlock.h
 			MachineState.h
 			TBAA.h
+			BinarySearch.h
 			
 			Instructions/Types.h
 			Instructions/Instruction.h

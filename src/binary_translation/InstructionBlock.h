@@ -44,6 +44,11 @@ public:
      */
     llvm::Value *Write(Register reg, llvm::Value *value);
 
+    /*
+     * Creates a basic block for use by instructions
+     */
+    llvm::BasicBlock *CreateBasicBlock(const char *name);
+
     u32 Address();
     ModuleGen *Module() { return module; }
 

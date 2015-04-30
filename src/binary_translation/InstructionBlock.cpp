@@ -10,7 +10,7 @@ InstructionBlock::InstructionBlock(ModuleGen* module, Instruction* instruction)
       instruction(std::unique_ptr<Instruction>(instruction))
 {
     std::stringstream ss;
-    ss << std::hex << std::setfill('0') << std::setw(8) << instruction->Address();
+    ss << std::hex << std::setfill('0') << std::setw(8) << instruction->Address() << "_";
     address_string = ss.str();
 }
 
@@ -20,7 +20,7 @@ InstructionBlock::~InstructionBlock()
 
 void InstructionBlock::GenerateEntryBlock()
 {
-    entry_basic_block = llvm::BasicBlock::Create(llvm::getGlobalContext(), address_string + "_Entry");
+    entry_basic_block = CreateBasicBlock("Entry");
 }
 
 void InstructionBlock::GenerateCode()
@@ -29,14 +29,6 @@ void InstructionBlock::GenerateCode()
     ir_builder->SetInsertPoint(entry_basic_block);
 
     instruction->GenerateCode(this);
-
-    auto basic_block = ir_builder->GetInsertBlock();
-    // If the basic block is terminated there has been a jump
-    // If not, jump to the next instruction
-    if (!basic_block->getTerminator())
-    {
-        Module()->BranchWritePCConst(Address() + 4);
-    }
 }
 
 llvm::Value *InstructionBlock::Read(Register reg)
@@ -47,6 +39,11 @@ llvm::Value *InstructionBlock::Read(Register reg)
 llvm::Value *InstructionBlock::Write(Register reg, llvm::Value *value)
 {
     return module->Machine()->WriteRegiser(reg, value);
+}
+
+llvm::BasicBlock *InstructionBlock::CreateBasicBlock(const char *name)
+{
+    return llvm::BasicBlock::Create(llvm::getGlobalContext(), address_string + name);
 }
 
 u32 InstructionBlock::Address()

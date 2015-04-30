@@ -1,6 +1,7 @@
 #pragma once
 #include "common/common_types.h"
 #include <initializer_list>
+#include "Types.h"
 
 class InstructionBlock;
 
@@ -19,10 +20,9 @@ public:
     bool Read(u32 instruction, u32 address);
 
     /*
-     * Generates code for the instruction into the instruction block
-     * Derived classes must override this
+     * Generates non instruction specific code, and then calls GenerateInstructionCode
      */
-    virtual void GenerateCode(InstructionBlock *instruction_block) = 0;
+    void GenerateCode(InstructionBlock *instruction_block);
 
     u32 Address() { return address; }
 protected:
@@ -30,6 +30,11 @@ protected:
      * Derived classes must override this, and implement it by calling ReadFields
      */
     virtual bool Decode() = 0;
+    /*
+     * Generates code for the instruction into the instruction block
+     * Derived classes must override this
+     */
+    virtual void GenerateInstructionCode(InstructionBlock *instruction_block) = 0;
     /*
      * Reads fields from the instruction
      * The fields come most significant first
@@ -46,6 +51,10 @@ protected:
      */
     template<size_t BitCount, typename Type>
     static FieldDefObject FieldDef(Type *field);
+    /*
+    * Creates a field definition for the condition field
+    */
+    FieldDefObject CondDef();
 private:
     /*
      * Function used by FieldDefObject to write to a field
@@ -57,6 +66,8 @@ private:
     u32 instruction;
     // Instruction address
     u32 address;
+
+    Condition cond;
 };
 
 /*

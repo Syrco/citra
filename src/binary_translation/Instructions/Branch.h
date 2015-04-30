@@ -16,10 +16,9 @@ public:
 
 public:
     virtual bool Decode() override;
-    void GenerateCode(InstructionBlock* instruction_block) override;
+    void GenerateInstructionCode(InstructionBlock* instruction_block) override;
 private:
     Form form;
-    Condition cond;
     bool link;
     u32 imm24;
     Register rm;

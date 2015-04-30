@@ -24,6 +24,25 @@ void MachineState::GenerateGlobals()
         false, GlobalValue::ExternalLinkage, flags_global_initializer, "Flags");
 }
 
+Value *MachineState::GetRegisterPtr(Register reg)
+{
+    Value *global;
+    unsigned index;
+    if (reg <= Register::PC)
+    {
+        global = registers_global;
+        index = static_cast<unsigned>(reg)-static_cast<unsigned>(Register::R0);
+    }
+    else
+    {
+        global = flags_global;
+        index = (static_cast<unsigned>(reg)-static_cast<unsigned>(Register::N)) * 4;
+    }
+    auto base = module->IrBuilder()->CreateAlignedLoad(global, 4);
+    module->GetTBAA()->TagConst(base);
+    return module->IrBuilder()->CreateConstInBoundsGEP1_32(base, index);
+}
+
 Value* MachineState::ReadRegiser(Register reg)
 {
     auto load = module->IrBuilder()->CreateAlignedLoad(GetRegisterPtr(reg), 4);
@@ -38,21 +57,33 @@ Value* MachineState::WriteRegiser(Register reg, Value *value)
     return store;
 }
 
-Value *MachineState::GetRegisterPtr(Register reg)
+Value* MachineState::ConditionPassed(Condition cond)
 {
-    Value *global;
-    unsigned index;
-    if (reg <= Register::PC)
+    auto ir_builder = module->IrBuilder();
+    Value *pred = nullptr;
+    auto not = false;
+    switch (cond)
     {
-        global = registers_global;
-        index = static_cast<unsigned>(reg)-static_cast<unsigned>(Register::R0);
+    case Condition::NE: case Condition::CC: case Condition::PL: case Condition::VC:
+    case Condition::LS: case Condition::LT: case Condition::LE:
+        not = true;
+        cond = (Condition)((int)cond - 1);
     }
-    else
+
+    switch (cond)
     {
-        global = flags_global;
-        index = static_cast<unsigned>(reg)-static_cast<unsigned>(Register::N);
+    case Condition::EQ: pred = ReadRegiser(Register::Z); break;
+    case Condition::CS: pred = ReadRegiser(Register::C); break;
+    case Condition::MI: pred = ReadRegiser(Register::N); break;
+    case Condition::VS: pred = ReadRegiser(Register::V); break;
+    case Condition::HI: pred = ir_builder->CreateAnd(ReadRegiser(Register::C), ir_builder->CreateNot(ReadRegiser(Register::Z))); break;
+    case Condition::GE: pred = ir_builder->CreateICmpEQ(ReadRegiser(Register::N), ReadRegiser(Register::V)); break;
+    case Condition::GT: pred = ir_builder->CreateAnd(ir_builder->CreateNot(ReadRegiser(Register::Z)),
+        ir_builder->CreateICmpEQ(ReadRegiser(Register::N), ReadRegiser(Register::V))); break;
+    case Condition::AL: pred = ir_builder->getInt1(true);
+    default: assert(false, "Invalid condition");
     }
-    auto base = module->IrBuilder()->CreateAlignedLoad(global, 4);
-    module->GetTBAA()->TagConst(base);
-    return module->IrBuilder()->CreateConstInBoundsGEP1_32(base, index);
+
+    if (not) pred = ir_builder->CreateNot(pred);
+    return pred;
 }

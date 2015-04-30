@@ -25,10 +25,9 @@ public:
 
 public:
     virtual bool Decode() override;
-    void GenerateCode(InstructionBlock* instruction_block) override;
+    void GenerateInstructionCode(InstructionBlock* instruction_block) override;
 private:
     Form form;
-    Condition cond;
     ShortOpType short_op;
     bool s;
     Register rn;

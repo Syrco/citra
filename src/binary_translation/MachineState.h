@@ -1,4 +1,5 @@
 
+enum class Condition;
 enum class Register;
 class ModuleGen;
 
@@ -20,7 +21,7 @@ public:
     void GenerateGlobals();
     llvm::Value *ReadRegiser(Register reg);
     llvm::Value *WriteRegiser(Register reg, llvm::Value *value);
-
+    llvm::Value* ConditionPassed(Condition cond);
 private:
     // Returns the address of a register or a flag
     llvm::Value *GetRegisterPtr(Register reg);
