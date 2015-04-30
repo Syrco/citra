@@ -20,6 +20,11 @@ public:
 
     void Run();
 
+    // Generate code to read pc and run all following instructions, used in cases of indirect branch
+    void ReadPC();
+    // Generate code to write to pc and run all following instructions, used in cases of direct branch
+    void WritePCConst(u32 pc);
+
     llvm::IRBuilder<> *IrBuilder() { return ir_builder.get(); }
     llvm::Module *Module() { return module; }
     MachineState *Machine() { return machine.get(); }
@@ -37,8 +42,6 @@ private:
     void GenerateInstructionsEntry();
     // Generates the code of each instruction
     void GenerateInstructionsCode();
-    // Terminates each block
-    void GenerateInstructionsTermination();
     // Adds all the basic blocks of an instruction to the run function
     void AddInstructionsToRunFunction();
 

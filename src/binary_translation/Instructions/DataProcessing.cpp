@@ -1,6 +1,7 @@
 #include "DataProcessing.h"
 #include "Disassembler.h"
 #include "InstructionBlock.h"
+#include "ModuleGen.h"
 
 static RegisterInstruction<DataProcessing> register_instruction;
 
@@ -32,4 +33,9 @@ void DataProcessing::GenerateCode(InstructionBlock* instruction_block)
 
     auto value = instruction_block->Read(rm);
     instruction_block->Write(rd, value);
+
+    if (rd == Register::PC)
+    {
+        instruction_block->Module()->ReadPC();
+    }
 }

@@ -47,7 +47,6 @@ public:
     ModuleGen *Module() { return module; }
 
     llvm::BasicBlock *GetEntryBasicBlock() { return entry_basic_block; }
-    llvm::BasicBlock *GetExitBasicBlock() { return exit_basic_block; }
 private:
     // Textual representation of the address
     // Used to generate names
@@ -58,7 +57,4 @@ private:
 
     // The block at the entry to instruction
     llvm::BasicBlock *entry_basic_block;
-
-    // The block at the exit from the instruction
-    llvm::BasicBlock *exit_basic_block;
 };

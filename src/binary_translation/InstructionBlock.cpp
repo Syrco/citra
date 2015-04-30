@@ -25,11 +25,18 @@ void InstructionBlock::GenerateEntryBlock()
 
 void InstructionBlock::GenerateCode()
 {
-    Module()->IrBuilder()->SetInsertPoint(entry_basic_block);
+    auto ir_builder = Module()->IrBuilder();
+    ir_builder->SetInsertPoint(entry_basic_block);
 
     instruction->GenerateCode(this);
 
-    exit_basic_block = Module()->IrBuilder()->GetInsertBlock();
+    auto basic_block = ir_builder->GetInsertBlock();
+    // If the basic block is terminated there has been a jump
+    // If not, jump to the next instruction
+    if (!basic_block->getTerminator())
+    {
+        Module()->WritePCConst(Address() + 4);
+    }
 }
 
 llvm::Value *InstructionBlock::Read(Register reg)

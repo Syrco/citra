@@ -35,10 +35,30 @@ void ModuleGen::Run()
     GenerateGetBlockAddressFunction();
 
     GenerateInstructionsCode();
-    GenerateInstructionsTermination();
     AddInstructionsToRunFunction();
 
     GenerateBlockAddressArray();
+}
+
+void ModuleGen::ReadPC()
+{
+    ir_builder->CreateBr(run_function_re_entry);
+}
+
+void ModuleGen::WritePCConst(u32 pc)
+{
+    auto i = instruction_blocks_by_pc.find(pc);
+    if (i != instruction_blocks_by_pc.end())
+    {
+        // Found instruction, jump to it
+        ir_builder->CreateBr(i->second->GetEntryBasicBlock());
+    }
+    else
+    {
+        // Didn't find instruction, write PC and exit
+        machine->WriteRegiser(Register::PC, ir_builder->getInt32(pc));
+        ir_builder->CreateRetVoid();
+    }
 }
 
 void ModuleGen::GenerateGlobals()
@@ -200,17 +220,6 @@ void ModuleGen::GenerateInstructionsCode()
     }
 }
 
-void ModuleGen::GenerateInstructionsTermination()
-{
-    // Return to the switch
-    for (auto &block : instruction_blocks)
-    {
-        ir_builder->SetInsertPoint(block->GetExitBasicBlock());
-        Machine()->WriteRegiser(Register::PC, ir_builder->getInt32(block->Address() + 4));
-        ir_builder->CreateBr(run_function_re_entry);
-    }
-}
-
 void ModuleGen::AddInstructionsToRunFunction()
 {
     std::stack<BasicBlock *> basic_blocks_stack;
@@ -223,6 +232,7 @@ void ModuleGen::AddInstructionsToRunFunction()
         {
             auto basic_block = basic_blocks_stack.top();
             basic_blocks_stack.pop();
+            if (basic_block->getParent()) continue; // Already added to run
             basic_block->insertInto(run_function);
             auto terminator = basic_block->getTerminator();
             for (auto i = 0; i < terminator->getNumSuccessors(); ++i)
