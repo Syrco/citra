@@ -2,6 +2,8 @@
 #include "common/common_types.h"
 #include <initializer_list>
 
+class InstructionBlock;
+
 class Instruction
 {
 protected:
@@ -15,9 +17,17 @@ public:
      * Returns true on success, or false otherwise
      */
     bool Read(u32 instruction, u32 address);
+
+    /*
+     * Generates code for the instruction into the instruction block
+     * Derived classes must override this
+     */
+    virtual void GenerateCode(InstructionBlock *instruction_block) = 0;
+
+    u32 Address() { return address; }
 protected:
     /*
-     * Derived classes should override this, and implement it by calling ReadFields
+     * Derived classes must override this, and implement it by calling ReadFields
      */
     virtual bool Decode() = 0;
     /*
@@ -36,7 +46,6 @@ protected:
      */
     template<size_t BitCount, typename Type>
     static FieldDefObject FieldDef(Type *field);
-
 private:
     /*
      * Function used by FieldDefObject to write to a field

@@ -16,7 +16,7 @@ public:
     {
         BitwiseAnd = 0, BitwiseXor, Subtract, RevSubtract, Add, AddWithCarry, SubtractWithCarry, ReverseSubtractWithCarry,
         // Compare, Test, Misc
-        BitwiseOr = 12, Move, BitwiseBitClear, BitwiseNot
+        BitwiseOr = 12, MoveAndShifts, BitwiseBitClear, BitwiseNot
     };
     enum class Form
     {
@@ -25,6 +25,7 @@ public:
 
 public:
     virtual bool Decode() override;
+    void GenerateCode(InstructionBlock* instruction_block) override;
 private:
     Form form;
     Condition cond;
@@ -32,5 +33,7 @@ private:
     bool s;
     Register rn;
     Register rd;
+    Register rm;
     u32 imm12;
+    u32 imm5;
 };

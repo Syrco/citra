@@ -3,6 +3,7 @@ set(SRCS
 			CodeGen.cpp
 			ModuleGen.cpp
 			Disassembler.cpp
+			InstructionBlock.cpp
 			
 			Instructions/Instruction.cpp
 			Instructions/DataProcessing.cpp
@@ -11,6 +12,7 @@ set(HEADERS
 			CodeGen.h
 			ModuleGen.h
 			Disassembler.h
+			InstructionBlock.h
 			
 			Instructions/Types.h
 			Instructions/Instruction.h
