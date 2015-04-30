@@ -15,6 +15,10 @@
 #include "core/loader/ncch.h"
 #include "core/mem_map.h"
 
+#if ENABLE_BINARY_TRANSLATION
+#include "core/binary_translation/BinaryTranslationLoader.h"
+#endif
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace Loader {
@@ -113,15 +117,18 @@ ResultStatus LoadFile(const std::string& filename) {
 
     LOG_INFO(Loader, "Loading file %s as %s...", filename.c_str(), GetFileTypeString(type));
 
+    ResultStatus status = ResultStatus::Error;
     switch (type) {
 
     //3DSX file format...
     case FileType::THREEDSX:
-        return AppLoader_THREEDSX(std::move(file), filename_filename).Load();
+        status = AppLoader_THREEDSX(std::move(file), filename_filename).Load();
+		break;
 
     // Standard ELF file format...
     case FileType::ELF:
-        return AppLoader_ELF(std::move(file), filename_filename).Load();
+        status = AppLoader_ELF(std::move(file), filename_filename).Load();
+        break;
 
     // NCCH/NCSD container formats...
     case FileType::CXI:
@@ -132,7 +139,7 @@ ResultStatus LoadFile(const std::string& filename) {
         // Load application and RomFS
         if (ResultStatus::Success == app_loader.Load()) {
             Service::FS::RegisterArchiveType(Common::make_unique<FileSys::ArchiveFactory_RomFS>(app_loader), Service::FS::ArchiveIdCode::RomFS);
-            return ResultStatus::Success;
+            status = ResultStatus::Success;
         }
         break;
     }
@@ -144,10 +151,25 @@ ResultStatus LoadFile(const std::string& filename) {
     case FileType::Unknown:
     {
         LOG_CRITICAL(Loader, "File %s is of unknown type.", filename.c_str());
-        return ResultStatus::ErrorInvalidFormat;
+        status = ResultStatus::ErrorInvalidFormat;
+        break;
     }
     }
-    return ResultStatus::Error;
+#if ENABLE_BINARY_TRANSLATION
+    if (status == ResultStatus::Success)
+    {
+        std::unique_ptr<FileUtil::IOFile> optimized_file(new FileUtil::IOFile(filename + ".obj", "rb"));
+        if (!optimized_file->IsOpen())
+        {
+            LOG_WARNING(Loader, "Failed to load optimized file %s.obj", filename.c_str());
+        }
+        else
+        {
+            BinaryTranslationLoader::Load(*optimized_file);
+        }
+    }
+#endif
+    return status;
 }
 
 } // namespace Loader

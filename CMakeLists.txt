@@ -195,6 +195,7 @@ endif()
 
 option(ENABLE_BINARY_TRANSLATION "Enable binary translation. Requires LLVM" OFF)
 if(ENABLE_BINARY_TRANSLATION)
+	add_definitions(-DENABLE_BINARY_TRANSLATION)
 	find_package(LLVM REQUIRED CONFIG)
 	include_directories(${LLVM_INCLUDE_DIRS})
 	add_definitions(${LLVM_DEFINITIONS})

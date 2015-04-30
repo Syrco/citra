@@ -215,6 +215,17 @@ set(HEADERS
             system.h
             )
 
+if(ENABLE_BINARY_TRANSLATION)
+	set(SRCS
+				${SRCS}
+				binary_translation/BinaryTranslationLoader.cpp
+				)
+	set(HEADERS
+				${HEADERS}
+				binary_translation/BinaryTranslationLoader.h
+				)
+endif()
+			
 create_directory_groups(${SRCS} ${HEADERS})
 
 add_library(core STATIC ${SRCS} ${HEADERS})
