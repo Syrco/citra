@@ -1,6 +1,7 @@
 #include <llvm/IR/IRBuilder.h>
 #include <unordered_map>
 #include <common/common_types.h>
+#include "TBAA.h"
 
 enum class Register;
 
@@ -28,6 +29,7 @@ public:
     llvm::IRBuilder<> *IrBuilder() { return ir_builder.get(); }
     llvm::Module *Module() { return module; }
     MachineState *Machine() { return machine.get(); }
+    TBAA *GetTBAA() { return tbaa.get(); }
 
 private:
     // Generates the declarations of all the globals of the module
@@ -46,6 +48,7 @@ private:
     void AddInstructionsToRunFunction();
 
     std::unique_ptr<MachineState> machine;
+    std::unique_ptr<TBAA> tbaa;
 
     std::unique_ptr<llvm::IRBuilder<>> ir_builder;
     llvm::Module *module;

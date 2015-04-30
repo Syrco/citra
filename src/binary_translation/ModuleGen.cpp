@@ -17,6 +17,7 @@ ModuleGen::ModuleGen(llvm::Module* module)
 {
     ir_builder = make_unique<IRBuilder<>>(getGlobalContext());
     machine = make_unique<MachineState>(this);
+    tbaa = make_unique<TBAA>();
 }
 
 ModuleGen::~ModuleGen()
@@ -25,6 +26,7 @@ ModuleGen::~ModuleGen()
 
 void ModuleGen::Run()
 {
+    tbaa->GenerateTags();
     GenerateGlobals();
 
     DecodeInstructions();
@@ -133,6 +135,7 @@ void ModuleGen::GenerateGetBlockAddressFunction()
     ir_builder->SetInsertPoint(index_in_bounds_basic_block);
     Value *gep_values[] = { ir_builder->getInt32(0), index };
     auto block_address = ir_builder->CreateLoad(ir_builder->CreateInBoundsGEP(block_address_array, gep_values));
+    tbaa->TagConst(block_address);
     ir_builder->CreateRet(block_address);
 
     ir_builder->SetInsertPoint(index_out_of_bounds_basic_block);

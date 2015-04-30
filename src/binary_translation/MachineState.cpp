@@ -26,13 +26,15 @@ void MachineState::GenerateGlobals()
 
 Value* MachineState::ReadRegiser(Register reg)
 {
-    auto load = module->IrBuilder()->CreateLoad(GetRegisterPtr(reg));
+    auto load = module->IrBuilder()->CreateAlignedLoad(GetRegisterPtr(reg), 4);
+    module->GetTBAA()->TagRegister(load, reg);
     return load;
 }
 
 Value* MachineState::WriteRegiser(Register reg, Value *value)
 {
     auto store = module->IrBuilder()->CreateAlignedStore(value, GetRegisterPtr(reg), 4);
+    module->GetTBAA()->TagRegister(store, reg);
     return store;
 }
 
@@ -51,5 +53,6 @@ Value *MachineState::GetRegisterPtr(Register reg)
         index = static_cast<unsigned>(reg)-static_cast<unsigned>(Register::N);
     }
     auto base = module->IrBuilder()->CreateAlignedLoad(global, 4);
+    module->GetTBAA()->TagConst(base);
     return module->IrBuilder()->CreateConstInBoundsGEP1_32(base, index);
 }

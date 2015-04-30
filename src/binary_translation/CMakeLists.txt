@@ -5,6 +5,7 @@ set(SRCS
 			Disassembler.cpp
 			InstructionBlock.cpp
 			MachineState.cpp
+			TBAA.cpp
 			
 			Instructions/Instruction.cpp
 			Instructions/DataProcessing.cpp
@@ -15,6 +16,7 @@ set(HEADERS
 			Disassembler.h
 			InstructionBlock.h
 			MachineState.h
+			TBAA.h
 			
 			Instructions/Types.h
 			Instructions/Instruction.h
