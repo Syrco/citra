@@ -42,12 +42,12 @@ void ModuleGen::Run()
     GenerateBlockAddressArray();
 }
 
-void ModuleGen::ReadPC()
+void ModuleGen::BranchReadPC()
 {
     ir_builder->CreateBr(run_function_re_entry);
 }
 
-void ModuleGen::WritePCConst(u32 pc)
+void ModuleGen::BranchWritePCConst(u32 pc)
 {
     auto i = instruction_blocks_by_pc.find(pc);
     if (i != instruction_blocks_by_pc.end())

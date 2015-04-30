@@ -35,7 +35,7 @@ void InstructionBlock::GenerateCode()
     // If not, jump to the next instruction
     if (!basic_block->getTerminator())
     {
-        Module()->WritePCConst(Address() + 4);
+        Module()->BranchWritePCConst(Address() + 4);
     }
 }
 
@@ -49,7 +49,7 @@ llvm::Value *InstructionBlock::Write(Register reg, llvm::Value *value)
     return module->Machine()->WriteRegiser(reg, value);
 }
 
-size_t InstructionBlock::Address()
+u32 InstructionBlock::Address()
 {
     return instruction->Address();
 }

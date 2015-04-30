@@ -37,6 +37,6 @@ void DataProcessing::GenerateCode(InstructionBlock* instruction_block)
 
     if (rd == Register::PC)
     {
-        instruction_block->Module()->ReadPC();
+        instruction_block->Module()->BranchReadPC();
     }
 }

@@ -1,5 +1,6 @@
 #include <memory>
 #include <string>
+#include <common/common_types.h>
 
 namespace llvm
 {
@@ -43,7 +44,7 @@ public:
      */
     llvm::Value *Write(Register reg, llvm::Value *value);
 
-    size_t Address();
+    u32 Address();
     ModuleGen *Module() { return module; }
 
     llvm::BasicBlock *GetEntryBasicBlock() { return entry_basic_block; }
