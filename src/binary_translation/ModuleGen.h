@@ -5,6 +5,7 @@
 enum class Register;
 
 class InstructionBlock;
+class MachineState;
 
 namespace llvm
 {
@@ -19,11 +20,10 @@ public:
 
     void Run();
 
-    // Returns the address of a register or a flag
-    llvm::Value *GetRegisterPtr(Register reg);
-
     llvm::IRBuilder<> *IrBuilder() { return ir_builder.get(); }
     llvm::Module *Module() { return module; }
+    MachineState *Machine() { return machine.get(); }
+
 private:
     // Generates the declarations of all the globals of the module
     void GenerateGlobals();
@@ -42,20 +42,10 @@ private:
     // Adds all the basic blocks of an instruction to the run function
     void AddInstructionsToRunFunction();
 
+    std::unique_ptr<MachineState> machine;
+
     std::unique_ptr<llvm::IRBuilder<>> ir_builder;
     llvm::Module *module;
-
-    /*
-     * u32 *Registers;
-     *  The registers of the cpu
-     */
-    llvm::GlobalVariable *registers_global;
-    /*
-     * u32 *Flags;
-     *  The flags of the cpu
-     *  Orderered N, Z, C, V
-     */
-    llvm::GlobalVariable *flags_global;
 
     size_t block_address_array_base;
     size_t block_address_array_size;

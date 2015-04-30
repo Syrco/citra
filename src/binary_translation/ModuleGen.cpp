@@ -8,6 +8,7 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <stack>
+#include "MachineState.h"
 
 using namespace llvm;
 
@@ -15,6 +16,7 @@ ModuleGen::ModuleGen(llvm::Module* module)
     : module(module)
 {
     ir_builder = make_unique<IRBuilder<>>(getGlobalContext());
+    machine = make_unique<MachineState>(this);
 }
 
 ModuleGen::~ModuleGen()
@@ -39,32 +41,9 @@ void ModuleGen::Run()
     GenerateBlockAddressArray();
 }
 
-Value *ModuleGen::GetRegisterPtr(Register reg)
-{
-    Value *global;
-    unsigned index;
-    if (reg <= Register::PC)
-    {
-        global = registers_global;
-        index = static_cast<unsigned>(reg)-static_cast<unsigned>(Register::R0);
-    }
-    else
-    {
-        global = flags_global;
-        index = static_cast<unsigned>(reg)-static_cast<unsigned>(Register::N);
-    }
-    auto base = ir_builder->CreateAlignedLoad(global, 4);
-    return ir_builder->CreateConstInBoundsGEP1_32(base, index);
-}
-
 void ModuleGen::GenerateGlobals()
 {
-    auto registers_global_initializer = ConstantPointerNull::get(IntegerType::getInt32PtrTy(getGlobalContext()));
-    registers_global = new GlobalVariable(*module, registers_global_initializer->getType(), false, GlobalValue::ExternalLinkage, registers_global_initializer, "Registers");
-
-    // Flags is stored internally as i1* indexed in multiples of 4
-    auto flags_global_initializer = ConstantPointerNull::get(IntegerType::getInt1PtrTy(getGlobalContext()));
-    flags_global = new GlobalVariable(*module, flags_global_initializer->getType(), false, GlobalValue::ExternalLinkage, flags_global_initializer, "Flags");
+    machine->GenerateGlobals();
 
     auto get_block_address_function_type = FunctionType::get(ir_builder->getInt8PtrTy(), ir_builder->getInt32Ty(), false);
     get_block_address_function = Function::Create(get_block_address_function_type, GlobalValue::PrivateLinkage, "GetBlockAddress", module);
@@ -146,7 +125,7 @@ void ModuleGen::GenerateCanRunFunction()
     auto basic_block = BasicBlock::Create(getGlobalContext(), "Entry", can_run_function);
 
     ir_builder->SetInsertPoint(basic_block);
-    auto block_address = ir_builder->CreateCall(get_block_address_function, ir_builder->CreateAlignedLoad(GetRegisterPtr(Register::PC), 4));
+    auto block_address = ir_builder->CreateCall(get_block_address_function, machine->ReadRegiser(Register::PC));
     ir_builder->CreateRet(ir_builder->CreateICmpNE(block_address, ConstantPointerNull::get(ir_builder->getInt8PtrTy())));
 }
 
@@ -178,7 +157,7 @@ void ModuleGen::GenerateRunFunction()
     ir_builder->CreateBr(run_function_re_entry);
 
     ir_builder->SetInsertPoint(run_function_re_entry);
-    auto block_address = ir_builder->CreateCall(get_block_address_function, ir_builder->CreateAlignedLoad(GetRegisterPtr(Register::PC), 4));
+    auto block_address = ir_builder->CreateCall(get_block_address_function, Machine()->ReadRegiser(Register::PC));
     auto block_present_pred = ir_builder->CreateICmpNE(block_address, ConstantPointerNull::get(ir_builder->getInt8PtrTy()));
     ir_builder->CreateCondBr(block_present_pred, block_present_basic_block, block_not_present_basic_block);
 
@@ -227,7 +206,7 @@ void ModuleGen::GenerateInstructionsTermination()
     for (auto &block : instruction_blocks)
     {
         ir_builder->SetInsertPoint(block->GetExitBasicBlock());
-        ir_builder->CreateAlignedStore(ir_builder->getInt32(block->Address() + 4), GetRegisterPtr(Register::PC), 4);
+        Machine()->WriteRegiser(Register::PC, ir_builder->getInt32(block->Address() + 4));
         ir_builder->CreateBr(run_function_re_entry);
     }
 }

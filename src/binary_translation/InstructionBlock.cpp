@@ -3,6 +3,7 @@
 #include "Instructions/Instruction.h"
 #include <sstream>
 #include <iomanip>
+#include "MachineState.h"
 
 InstructionBlock::InstructionBlock(ModuleGen* module, Instruction* instruction)
     : module(module),
@@ -33,14 +34,12 @@ void InstructionBlock::GenerateCode()
 
 llvm::Value *InstructionBlock::Read(Register reg)
 {
-    auto ib = module->IrBuilder();
-    return ib->CreateAlignedLoad(module->GetRegisterPtr(reg), 4);
+    return module->Machine()->ReadRegiser(reg);
 }
 
 llvm::Value *InstructionBlock::Write(Register reg, llvm::Value *value)
 {
-    auto ib = module->IrBuilder();
-    return ib->CreateAlignedStore(value, module->GetRegisterPtr(reg), 4);
+    return module->Machine()->WriteRegiser(reg, value);
 }
 
 size_t InstructionBlock::Address()

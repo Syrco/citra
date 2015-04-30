@@ -4,6 +4,7 @@ set(SRCS
 			ModuleGen.cpp
 			Disassembler.cpp
 			InstructionBlock.cpp
+			MachineState.cpp
 			
 			Instructions/Instruction.cpp
 			Instructions/DataProcessing.cpp
@@ -13,6 +14,7 @@ set(HEADERS
 			ModuleGen.h
 			Disassembler.h
 			InstructionBlock.h
+			MachineState.h
 			
 			Instructions/Types.h
 			Instructions/Instruction.h
