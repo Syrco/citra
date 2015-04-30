@@ -197,14 +197,20 @@ void ModuleGen::GenerateRunFunction()
 
 void ModuleGen::DecodeInstructions()
 {
+    size_t generated = 0;
+    size_t total = 0;
     for (auto i = Loader::ROMCodeStart; i <= Loader::ROMCodeStart + Loader::ROMCodeSize - 4; i += 4)
     {
+        ++total;
         auto instruction = Disassembler::Disassemble(Memory::Read32(i), i);
         if (instruction == nullptr) continue;
+        ++generated;
         auto instruction_block = std::make_unique<InstructionBlock>(this, instruction.release());
         instruction_blocks_by_pc[i] = instruction_block.get();
         instruction_blocks.push_back(std::move(instruction_block));
     }
+
+    LOG_INFO(BinaryTranslator, "Generated % 8d blocks of % 8d = % 3.1f%%", generated, total, 100.0 * generated / total);
 }
 
 void ModuleGen::GenerateInstructionsEntry()
