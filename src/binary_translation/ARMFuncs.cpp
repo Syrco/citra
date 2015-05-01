@@ -166,3 +166,12 @@ ARMFuncs::ResultCarry ARMFuncs::RRX_C(InstructionBlock* instruction, llvm::Value
     auto carry = ir_builder->CreateTrunc(x, ir_builder->getInt1Ty());
     return{ result, carry };
 }
+
+ARMFuncs::ResultCarry ARMFuncs::ARMExpandImm_C(InstructionBlock *instruction, u32 imm12, llvm::Value* carry)
+{
+	auto ir_builder = instruction->IrBuilder();
+
+	auto value = ir_builder->getInt32(imm12 & 0xFF);
+	auto shift = ir_builder->getInt32(2 * (imm12 >> 8));
+	return Shift_C(instruction, value, SRType::ROR, shift, carry);
+}

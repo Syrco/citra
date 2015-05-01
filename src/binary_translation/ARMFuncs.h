@@ -3,7 +3,8 @@
 /*
  * Functions from the manual,
  * A8.4.3 Pseudocode details of instruction-specified shifts and rotates
- * A2.2.1 Integer arithmetic 
+ * A2.2.1 Integer arithmetic
+ * A5.2.4 Modified immediate constants in ARM instructions
  */
 
 class InstructionBlock;
@@ -39,4 +40,6 @@ public:
     static ResultCarry ASR_C(InstructionBlock *instruction, llvm::Value *x, llvm::Value *shift);
     static ResultCarry ROR_C(InstructionBlock *instruction, llvm::Value *x, llvm::Value *shift);
     static ResultCarry RRX_C(InstructionBlock *instruction, llvm::Value *x, llvm::Value *carry_in);
+
+	static ResultCarry ARMExpandImm_C(InstructionBlock *instruction, u32 imm12, llvm::Value *carry);
 };

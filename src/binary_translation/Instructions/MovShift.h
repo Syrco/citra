@@ -15,7 +15,7 @@ public:
     };
     enum class Form
     {
-        Register, RegisterShiftedRegister, Immediate
+        Register, ImmediateA1, ImmediateA2
     };
 
 public:
@@ -29,5 +29,6 @@ private:
     Register rm;
     u32 imm12;
     u32 imm5;
+	u32 imm4;
     Op2Type op2;
 };
