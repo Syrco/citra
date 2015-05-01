@@ -9,7 +9,7 @@ set(SRCS
 			ARMFuncs.cpp
 			
 			Instructions/Instruction.cpp
-			Instructions/DataProcessing.cpp
+			Instructions/MovShift.cpp
 			Instructions/Branch.cpp
             )
 set(HEADERS
@@ -24,7 +24,7 @@ set(HEADERS
 			
 			Instructions/Types.h
 			Instructions/Instruction.h
-			Instructions/DataProcessing.h
+			Instructions/MovShift.h
 			Instructions/Branch.h
             )
 			

@@ -1,15 +1,15 @@
-#include "DataProcessing.h"
+#include "MovShift.h"
 #include "Disassembler.h"
 #include "InstructionBlock.h"
 #include "ModuleGen.h"
 #include "ARMFuncs.h"
 
-static RegisterInstruction<DataProcessing> register_instruction;
+static RegisterInstruction<MovShift> register_instruction;
 
-bool DataProcessing::Decode()
+bool MovShift::Decode()
 {
     // Mov and shifts must have zeroes at some operands of different data processing instructions
-    if (ReadFields({ CondDef(), FieldDef<3>(0), FieldDef<4>((u32)ShortOpType::MoveAndShifts), FieldDef<1>(&s), FieldDef<4>(0),
+    if (ReadFields({ CondDef(), FieldDef<3>(0), FieldDef<4>(13), FieldDef<1>(&s), FieldDef<4>(0),
                      FieldDef<4>(&rd), FieldDef<5>(&imm5), FieldDef<2>(&op2), FieldDef<1>(0), FieldDef<4>(&rm) }))
     {
         form = Form::Register;
@@ -17,17 +17,10 @@ bool DataProcessing::Decode()
         if (rd == Register::PC && s) return false; // SEE SUBS PC, LR and related instructions;
         return true;
     }
-    if (ReadFields({ CondDef(), FieldDef<3>(1), FieldDef<4>(&short_op), FieldDef<1>(&s), FieldDef<4>(&rn),
-        FieldDef<4>(&rd), FieldDef<12>(&imm12) }))
-    {
-        // TODO: not implemented
-        form = Form::Immediate;
-        return false;
-    }
     return false;
 }
 
-void DataProcessing::GenerateInstructionCode(InstructionBlock* instruction_block)
+void MovShift::GenerateInstructionCode(InstructionBlock* instruction_block)
 {
     auto ir_builder = instruction_block->IrBuilder();
 
