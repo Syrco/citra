@@ -1,12 +1,13 @@
+#pragma once
 #include <llvm/IR/IRBuilder.h>
 #include <unordered_map>
 #include <common/common_types.h>
-#include "TBAA.h"
 
 enum class Register;
 
 class InstructionBlock;
 class MachineState;
+class TBAA;
 
 namespace llvm
 {

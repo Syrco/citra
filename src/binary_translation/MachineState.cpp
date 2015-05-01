@@ -5,6 +5,7 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/GlobalVariable.h>
+#include "TBAA.h"
 
 using namespace llvm;
 

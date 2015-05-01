@@ -1,3 +1,4 @@
+#pragma once
 #include "Instructions/Types.h"
 
 namespace llvm

@@ -18,6 +18,10 @@ public:
         // Compare, Test, Misc
         BitwiseOr = 12, MoveAndShifts, BitwiseBitClear, BitwiseNot
     };
+    enum class Op2Type
+    {
+        MoveAndLSL, LSR, ASR, RRXAndROR
+    };
     enum class Form
     {
         Register, RegisterShiftedRegister, Immediate
@@ -35,4 +39,5 @@ private:
     Register rm;
     u32 imm12;
     u32 imm5;
+    Op2Type op2;
 };

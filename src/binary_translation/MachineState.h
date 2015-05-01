@@ -6,6 +6,7 @@ class ModuleGen;
 namespace llvm
 {
     class Value;
+    class Instruction;
     class GlobalVariable;
 }
 

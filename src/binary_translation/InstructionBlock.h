@@ -1,6 +1,8 @@
 #include <memory>
 #include <string>
 #include <common/common_types.h>
+#include <llvm/IR/IRBuilder.h>
+#include "ModuleGen.h"
 
 namespace llvm
 {
@@ -8,7 +10,6 @@ namespace llvm
     class BasicBlock;
 }
 
-class ModuleGen;
 class Instruction;
 
 enum class Register;
@@ -51,6 +52,7 @@ public:
 
     u32 Address();
     ModuleGen *Module() { return module; }
+    llvm::IRBuilder<> *IrBuilder() { return module->IrBuilder(); }
 
     llvm::BasicBlock *GetEntryBasicBlock() { return entry_basic_block; }
 private:

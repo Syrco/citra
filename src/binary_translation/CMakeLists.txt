@@ -6,6 +6,7 @@ set(SRCS
 			InstructionBlock.cpp
 			MachineState.cpp
 			TBAA.cpp
+			ARMFuncs.cpp
 			
 			Instructions/Instruction.cpp
 			Instructions/DataProcessing.cpp
@@ -19,6 +20,7 @@ set(HEADERS
 			MachineState.h
 			TBAA.h
 			BinarySearch.h
+			ARMFuncs.h
 			
 			Instructions/Types.h
 			Instructions/Instruction.h

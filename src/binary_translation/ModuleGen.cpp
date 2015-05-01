@@ -9,6 +9,7 @@
 #include <llvm/IR/GlobalVariable.h>
 #include <stack>
 #include "MachineState.h"
+#include "TBAA.h"
 
 using namespace llvm;
 
