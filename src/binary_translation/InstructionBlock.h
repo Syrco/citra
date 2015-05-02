@@ -50,11 +50,23 @@ public:
      */
     llvm::BasicBlock *CreateBasicBlock(const char *name);
 
+	/*
+	 * Links two instructions, adding to prev and next lists
+	 */
+	static void Link(InstructionBlock *prev, InstructionBlock *next);
+
     u32 Address();
     ModuleGen *Module() { return module; }
     llvm::IRBuilder<> *IrBuilder() { return module->IrBuilder(); }
 
     llvm::BasicBlock *GetEntryBasicBlock() { return entry_basic_block; }
+
+	bool HasColor() { return has_color; }
+	void SetColor(size_t color) { this->color = color; has_color = true; }
+	size_t GetColor() { return color; }
+
+	std::list<InstructionBlock *> GetNexts() { return nexts; }
+	std::list<InstructionBlock *> GetPrevs() { return prevs; }
 private:
     // Textual representation of the address
     // Used to generate names
@@ -65,4 +77,10 @@ private:
 
     // The block at the entry to instruction
     llvm::BasicBlock *entry_basic_block;
+
+	bool has_color = false;
+	size_t color;
+
+	std::list<InstructionBlock *> nexts;
+	std::list<InstructionBlock *> prevs;
 };

@@ -37,7 +37,7 @@ void Branch::GenerateInstructionCode(InstructionBlock* instruction_block)
         auto pc = static_cast<s32>(imm24 << 2);
         pc = pc << 6 >> 6; // Sign extend
         pc += instruction_block->Address() + 8;
-        instruction_block->Module()->BranchWritePCConst(pc);
+        instruction_block->Module()->BranchWritePCConst(instruction_block, pc);
     }
     else
     {

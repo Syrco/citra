@@ -8,6 +8,7 @@ enum class Register;
 class InstructionBlock;
 class MachineState;
 class TBAA;
+class BlockColors;
 
 namespace llvm
 {
@@ -25,7 +26,7 @@ public:
     // Generate code to read pc and run all following instructions, used in cases of indirect branch
     void BranchReadPC();
     // Generate code to write to pc and run all following instructions, used in cases of direct branch
-    void BranchWritePCConst(u32 pc);
+    void BranchWritePCConst(InstructionBlock *current, u32 pc);
 
     llvm::IRBuilder<> *IrBuilder() { return ir_builder.get(); }
     llvm::Module *Module() { return module; }
@@ -44,9 +45,10 @@ private:
     // Generates the entry basic blocks for each instruction
     void GenerateInstructionsEntry();
     // Generates the code of each instruction
-    void GenerateInstructionsCode();
-    // Adds all the basic blocks of an instruction to the run function
-    void AddInstructionsToRunFunction();
+	void GenerateInstructionsCode();
+	// Must be run after the instruction code is generated since it depends on the
+	// inter block jumps
+	void ColorBlocks();
 
     std::unique_ptr<MachineState> machine;
     std::unique_ptr<TBAA> tbaa;
@@ -55,7 +57,16 @@ private:
     llvm::Module *module;
 
     size_t block_address_array_base;
-    size_t block_address_array_size;
+	size_t block_address_array_size;
+	/*
+	 * struct BlockAddress
+	 * {
+	 *     void (*function)(u32 index);
+	 *     u32 index;
+	 * }
+	 */
+	llvm::StructType *block_address_type;
+	llvm::Constant *block_address_not_present;
     /*
      * i8 **BlockAddressArray;
      *  The array at [i/4 - block_address_array_base] contains the block address for the instruction at i
@@ -79,11 +90,12 @@ private:
      */
     llvm::Function *run_function;
     llvm::BasicBlock *run_function_entry;
-    llvm::BasicBlock *run_function_re_entry;
 
     /*
      * All the instruction blocks
      */
     std::vector<std::unique_ptr<InstructionBlock>> instruction_blocks;
     std::unordered_map<u32, InstructionBlock *> instruction_blocks_by_pc;
+
+	std::unique_ptr<BlockColors> block_colors;
 };

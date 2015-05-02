@@ -10,6 +10,7 @@
 #include <stack>
 #include "MachineState.h"
 #include "TBAA.h"
+#include "BlockColors.h"
 
 using namespace llvm;
 
@@ -19,6 +20,7 @@ ModuleGen::ModuleGen(llvm::Module* module)
     ir_builder = make_unique<IRBuilder<>>(getGlobalContext());
     machine = make_unique<MachineState>(this);
     tbaa = make_unique<TBAA>();
+	block_colors = make_unique<BlockColors>(this);
 }
 
 ModuleGen::~ModuleGen()
@@ -38,23 +40,26 @@ void ModuleGen::Run()
     GenerateGetBlockAddressFunction();
 
     GenerateInstructionsCode();
-    AddInstructionsToRunFunction();
 
+	ColorBlocks();
     GenerateBlockAddressArray();
 }
 
 void ModuleGen::BranchReadPC()
 {
-    ir_builder->CreateBr(run_function_re_entry);
+    auto call = ir_builder->CreateCall(run_function);
+	call->setTailCall();
+	ir_builder->CreateRetVoid();
 }
 
-void ModuleGen::BranchWritePCConst(u32 pc)
+void ModuleGen::BranchWritePCConst(InstructionBlock *current, u32 pc)
 {
     auto i = instruction_blocks_by_pc.find(pc);
     if (i != instruction_blocks_by_pc.end())
     {
         // Found instruction, jump to it
         ir_builder->CreateBr(i->second->GetEntryBasicBlock());
+		InstructionBlock::Link(i->second, current);
     }
     else
     {
@@ -68,7 +73,11 @@ void ModuleGen::GenerateGlobals()
 {
     machine->GenerateGlobals();
 
-    auto get_block_address_function_type = FunctionType::get(ir_builder->getInt8PtrTy(), ir_builder->getInt32Ty(), false);
+	auto function_pointer = PointerType::get(block_colors->GetFunctionType(), 0);
+	block_address_type = StructType::get(function_pointer, ir_builder->getInt32Ty(), nullptr);
+	block_address_not_present = ConstantStruct::get(block_address_type, ConstantPointerNull::get(function_pointer), ir_builder->getInt32(0), nullptr);
+	
+	auto get_block_address_function_type = FunctionType::get(block_address_type, ir_builder->getInt32Ty(), false);
     get_block_address_function = Function::Create(get_block_address_function_type, GlobalValue::PrivateLinkage, "GetBlockAddress", module);
 
     auto can_run_function_type = FunctionType::get(ir_builder->getInt1Ty(), false);
@@ -80,7 +89,7 @@ void ModuleGen::GenerateGlobals()
     block_address_array_base = Loader::ROMCodeStart / 4;
     block_address_array_size = Loader::ROMCodeSize / 4;
 
-    block_address_array_type = ArrayType::get(ir_builder->getInt8PtrTy(), block_address_array_size);
+	block_address_array_type = ArrayType::get(block_address_type, block_address_array_size);
     block_address_array = new GlobalVariable(*module, block_address_array_type, true, GlobalValue::ExternalLinkage, nullptr, "BlockAddressArray");
 }
 
@@ -91,15 +100,27 @@ void ModuleGen::GenerateBlockAddressArray()
     std::fill(
         local_block_address_array_values.get(),
         local_block_address_array_values.get() + block_address_array_size,
-        ConstantPointerNull::get(ir_builder->getInt8PtrTy()));
+		block_address_not_present);
 
-    for (auto i = 0; i < instruction_blocks.size(); ++i)
+    /*for (auto i = 0; i < instruction_blocks.size(); ++i)
     {
         auto &block = instruction_blocks[i];
         auto entry_basic_block = block->GetEntryBasicBlock();
         auto index = block->Address() / 4 - block_address_array_base;
-        local_block_address_array_values[index] = BlockAddress::get(entry_basic_block->getParent(), entry_basic_block);
-    }
+		auto color_index = 0;
+        local_block_address_array_values[index] = BConst
+    }*/
+	for (auto color = 0; color < block_colors->GetColorCount(); ++color)
+	{
+		auto function = block_colors->GetColorFunction(color);
+		for (auto i = 0; i < block_colors->GetColorInstructionCount(color); ++i)
+		{
+			auto block = block_colors->GetColorInstruction(color, i);
+			auto index = block->Address() / 4 - block_address_array_base;
+			auto value = ConstantStruct::get(block_address_type, function, ir_builder->getInt32(i), nullptr);
+			local_block_address_array_values[index] = value;
+		}
+	}
 
     auto local_block_address_array_values_ref = ArrayRef<Constant*>(local_block_address_array_values.get(), block_address_array_size);
     auto local_blocks_address_array = ConstantArray::get(block_address_array_type, local_block_address_array_values_ref);
@@ -140,29 +161,30 @@ void ModuleGen::GenerateGetBlockAddressFunction()
     ir_builder->CreateRet(block_address);
 
     ir_builder->SetInsertPoint(index_out_of_bounds_basic_block);
-    ir_builder->CreateRet(ConstantPointerNull::get(ir_builder->getInt8PtrTy()));
+    ir_builder->CreateRet(block_address_not_present);
 }
 
 void ModuleGen::GenerateCanRunFunction()
 {
-    // return GetBlockAddress(Read(PC)) != nullptr;
+    // return GetBlockAddress(Read(PC)).function != nullptr;
     auto basic_block = BasicBlock::Create(getGlobalContext(), "Entry", can_run_function);
 
     ir_builder->SetInsertPoint(basic_block);
     auto block_address = ir_builder->CreateCall(get_block_address_function, machine->ReadRegiser(Register::PC));
-    ir_builder->CreateRet(ir_builder->CreateICmpNE(block_address, ConstantPointerNull::get(ir_builder->getInt8PtrTy())));
+	auto function = ir_builder->CreateExtractValue(block_address, 0);
+	ir_builder->CreateRet(ir_builder->CreateICmpNE(function,
+		ConstantPointerNull::get(cast<PointerType>(function->getType()))));
 }
 
 void ModuleGen::GenerateRunFunction()
 {
     /*
     run_function_entry:
-    run_function_re_entry:
-        auto block_address = GetBlockAddress(Read(PC))
-        if(index != nullptr)
+        auto block = GetBlockAddress(Read(PC))
+        if(block_address != nullptr)
         {
     block_present_basic_block:
-            goto block_address;
+            block.function(block.index);
             return;
         }
         else
@@ -172,25 +194,21 @@ void ModuleGen::GenerateRunFunction()
         }
     */
     run_function_entry = BasicBlock::Create(getGlobalContext(), "Entry", run_function);
-    // run_function_re_entry is needed because it isn't possible to jump to the first block of a function
-    run_function_re_entry = BasicBlock::Create(getGlobalContext(), "ReEntry", run_function);
     auto block_present_basic_block = BasicBlock::Create(getGlobalContext(), "BlockPresent", run_function);
     auto block_not_present_basic_block = BasicBlock::Create(getGlobalContext(), "BlockNotPresent", run_function);
 
-    ir_builder->SetInsertPoint(run_function_entry);
-    ir_builder->CreateBr(run_function_re_entry);
-
-    ir_builder->SetInsertPoint(run_function_re_entry);
-    auto block_address = ir_builder->CreateCall(get_block_address_function, Machine()->ReadRegiser(Register::PC));
-    auto block_present_pred = ir_builder->CreateICmpNE(block_address, ConstantPointerNull::get(ir_builder->getInt8PtrTy()));
+	ir_builder->SetInsertPoint(run_function_entry);
+	auto block_address = ir_builder->CreateCall(get_block_address_function, Machine()->ReadRegiser(Register::PC));
+	auto function = ir_builder->CreateExtractValue(block_address, 0);
+	auto block_present_pred = ir_builder->CreateICmpNE(function,
+		ConstantPointerNull::get(cast<PointerType>(function->getType())));
     ir_builder->CreateCondBr(block_present_pred, block_present_basic_block, block_not_present_basic_block);
 
     ir_builder->SetInsertPoint(block_present_basic_block);
-    auto indirect_br = ir_builder->CreateIndirectBr(block_address, instruction_blocks.size());
-    for (auto &block : instruction_blocks)
-    {
-        indirect_br->addDestination(block->GetEntryBasicBlock());
-    }
+	auto index = ir_builder->CreateExtractValue(block_address, 1);
+	auto call = ir_builder->CreateCall(function, index);
+	call->setTailCall();
+	ir_builder->CreateRetVoid();
 
     ir_builder->SetInsertPoint(block_not_present_basic_block);
     ir_builder->CreateRetVoid();
@@ -230,27 +248,11 @@ void ModuleGen::GenerateInstructionsCode()
     }
 }
 
-void ModuleGen::AddInstructionsToRunFunction()
+void ModuleGen::ColorBlocks()
 {
-    std::stack<BasicBlock *> basic_blocks_stack;
-
-    for (auto &block : instruction_blocks)
-    {
-        basic_blocks_stack.push(block->GetEntryBasicBlock());
-
-        while (basic_blocks_stack.size())
-        {
-            auto basic_block = basic_blocks_stack.top();
-            basic_blocks_stack.pop();
-            if (basic_block->getParent()) continue; // Already added to run
-            basic_block->insertInto(run_function);
-            auto terminator = basic_block->getTerminator();
-            for (auto i = 0; i < terminator->getNumSuccessors(); ++i)
-            {
-                auto new_basic_block = terminator->getSuccessor(i);
-                if (new_basic_block->getParent()) continue; // Already added to run
-                basic_blocks_stack.push(new_basic_block);
-            }
-        }
-    }
+	for (auto &instruction : instruction_blocks)
+	{
+		block_colors->AddBlock(instruction.get());
+	}
+	block_colors->GenerateFunctions();
 }

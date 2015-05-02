@@ -7,6 +7,7 @@ set(SRCS
 			MachineState.cpp
 			TBAA.cpp
 			ARMFuncs.cpp
+            BlockColors.cpp
 			
 			Instructions/Instruction.cpp
 			Instructions/MovShift.cpp
@@ -21,6 +22,7 @@ set(HEADERS
 			TBAA.h
 			BinarySearch.h
 			ARMFuncs.h
+            BlockColors.h
 			
 			Instructions/Types.h
 			Instructions/Instruction.h
