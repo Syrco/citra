@@ -39,17 +39,7 @@ ARMFuncs::ResultCarry ARMFuncs::Shift_C(InstructionBlock* instruction, llvm::Val
 {
     auto ir_builder = instruction->IrBuilder();
 
-    // amount_zero_basic_block will not recieve any code, it used only for the phi
-    auto amount_zero_basic_block = instruction->CreateBasicBlock("ShiftCAmount0");
-    auto amount_not_zero_basic_block = instruction->CreateBasicBlock("ShiftCAmountNot0");
-    auto phi_basic_block = instruction->CreateBasicBlock("ShiftCPhi");
-
-    ir_builder->CreateCondBr(ir_builder->CreateICmpEQ(amount, ir_builder->getInt32(0)), amount_zero_basic_block, amount_not_zero_basic_block);
-
-    ir_builder->SetInsertPoint(amount_zero_basic_block);
-    ir_builder->CreateBr(phi_basic_block);
-
-    ir_builder->SetInsertPoint(amount_not_zero_basic_block);
+	auto amount_zero = ir_builder->CreateICmpEQ(amount, ir_builder->getInt32(0));
     ResultCarry result_amount_not_zero = {};
     switch (type)
     {
@@ -60,19 +50,11 @@ ARMFuncs::ResultCarry ARMFuncs::Shift_C(InstructionBlock* instruction, llvm::Val
     case SRType::RRX: result_amount_not_zero = RRX_C(instruction, value, carry_in); break;
     default: assert(false, "Invalid shift type");
     }
-    auto pred = ir_builder->GetInsertBlock(); // The basic block might have changed and needs to be current for the phi
-    ir_builder->CreateBr(phi_basic_block);
 
-    ir_builder->SetInsertPoint(phi_basic_block);
-    auto result_phi = ir_builder->CreatePHI(ir_builder->getInt32Ty(), 2);
-    auto carry_phi = ir_builder->CreatePHI(ir_builder->getInt1Ty(), 2);
+	auto result = ir_builder->CreateSelect(amount_zero, value, result_amount_not_zero.result);
+	auto carry = ir_builder->CreateSelect(amount_zero, carry_in, result_amount_not_zero.carry);
 
-    result_phi->addIncoming(value, amount_zero_basic_block);
-    result_phi->addIncoming(result_amount_not_zero.result, pred);
-    carry_phi->addIncoming(carry_in, amount_zero_basic_block);
-    carry_phi->addIncoming(result_amount_not_zero.carry, pred);
-
-    return{ result_phi, carry_phi };
+    return{ result, carry };
 }
 
 // Generates code for LSL, LSR that checks for 0 shift
@@ -82,28 +64,10 @@ llvm::Value* ShiftZeroCheck(
 {
     auto ir_builder = instruction->IrBuilder();
 
-    // amount_zero_basic_block will not recieve any code, it used only for the phi
-    auto amount_zero_basic_block = instruction->CreateBasicBlock("ShiftZeroCheckAmount0");
-    auto amount_not_zero_basic_block = instruction->CreateBasicBlock("ShiftZeroCheckAmountNot0");
-    auto phi_basic_block = instruction->CreateBasicBlock("ShiftZeroCheckPhi");
-
-    ir_builder->CreateCondBr(ir_builder->CreateICmpEQ(shift, ir_builder->getInt32(0)), amount_zero_basic_block, amount_not_zero_basic_block);
-
-    ir_builder->SetInsertPoint(amount_zero_basic_block);
-    ir_builder->CreateBr(phi_basic_block);
-
-    ir_builder->SetInsertPoint(amount_not_zero_basic_block);
+	auto amount_zero = ir_builder->CreateICmpEQ(shift, ir_builder->getInt32(0));
     auto result_amount_not_zero = non_zero_function(instruction, x, shift);
-    auto pred = ir_builder->GetInsertBlock(); // The basic block might have changed and needs to be current for the phi
-    ir_builder->CreateBr(phi_basic_block);
 
-    ir_builder->SetInsertPoint(phi_basic_block);
-    auto phi = ir_builder->CreatePHI(ir_builder->getInt32Ty(), 2);
-
-    phi->addIncoming(x, amount_zero_basic_block);
-    phi->addIncoming(result_amount_not_zero.result, pred);
-
-    return phi;
+	return ir_builder->CreateSelect(amount_zero, x, result_amount_not_zero.result);
 }
 
 ARMFuncs::ResultCarry ARMFuncs::LSL_C(InstructionBlock* instruction, llvm::Value* x, llvm::Value* shift)
