@@ -14,8 +14,9 @@
 
 using namespace llvm;
 
-ModuleGen::ModuleGen(llvm::Module* module)
-    : module(module)
+ModuleGen::ModuleGen(llvm::Module* module, bool verify)
+    : module(module),
+      verify(verify)
 {
     ir_builder = make_unique<IRBuilder<>>(getGlobalContext());
     machine = make_unique<MachineState>(this);
@@ -47,25 +48,41 @@ void ModuleGen::Run()
 
 void ModuleGen::BranchReadPC()
 {
-    auto call = ir_builder->CreateCall(run_function);
-	call->setTailCall();
-	ir_builder->CreateRetVoid();
+    if (verify)
+    {
+        ir_builder->CreateRetVoid();
+    }
+    else
+    {
+        auto call = ir_builder->CreateCall(run_function);
+        call->setTailCall();
+        ir_builder->CreateRetVoid();
+    }
 }
 
 void ModuleGen::BranchWritePCConst(InstructionBlock *current, u32 pc)
 {
-    auto i = instruction_blocks_by_pc.find(pc);
-    if (i != instruction_blocks_by_pc.end())
+    if (verify)
     {
-        // Found instruction, jump to it
-        ir_builder->CreateBr(i->second->GetEntryBasicBlock());
-		InstructionBlock::Link(i->second, current);
+        // Just write PC and exit on verify
+        machine->WriteRegiser(Register::PC, ir_builder->getInt32(pc));
+        ir_builder->CreateRetVoid();
     }
     else
     {
-        // Didn't find instruction, write PC and exit
-        machine->WriteRegiser(Register::PC, ir_builder->getInt32(pc));
-        ir_builder->CreateRetVoid();
+        auto i = instruction_blocks_by_pc.find(pc);
+        if (i != instruction_blocks_by_pc.end())
+        {
+            // Found instruction, jump to it
+            ir_builder->CreateBr(i->second->GetEntryBasicBlock());
+            InstructionBlock::Link(i->second, current);
+        }
+        else
+        {
+            // Didn't find instruction, write PC and exit
+            machine->WriteRegiser(Register::PC, ir_builder->getInt32(pc));
+            ir_builder->CreateRetVoid();
+        }
     }
 }
 
@@ -91,6 +108,9 @@ void ModuleGen::GenerateGlobals()
 
 	block_address_array_type = ArrayType::get(block_address_type, block_address_array_size);
     block_address_array = new GlobalVariable(*module, block_address_array_type, true, GlobalValue::ExternalLinkage, nullptr, "BlockAddressArray");
+
+    // bool Verify - contains the value of verify for citra usage
+    new GlobalVariable(*module, ir_builder->getInt1Ty(), true, GlobalValue::ExternalLinkage, ir_builder->getInt1(verify), "Verify");
 }
 
 void ModuleGen::GenerateBlockAddressArray()

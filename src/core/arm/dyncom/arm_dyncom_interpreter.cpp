@@ -3717,6 +3717,7 @@ unsigned InterpreterMainLoop(ARMul_State* cpu) {
 #define GOTO_NEXT_INST \
     if (num_instrs >= cpu->NumInstrsToExecute) goto END; \
     num_instrs++; \
+    BinaryTranslationLoader::VerifyCallback(); \
     switch(inst_base->idx) { \
     case 0: goto VMLA_INST; \
     case 1: goto VMLS_INST; \

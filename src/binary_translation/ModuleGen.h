@@ -18,7 +18,11 @@ namespace llvm
 class ModuleGen
 {
 public:
-    explicit ModuleGen(llvm::Module *module);
+    /*
+     * Verify - produce a code that can be verified
+     *          this is done by returning after every opcode
+     */
+    explicit ModuleGen(llvm::Module *module, bool verify);
     ~ModuleGen();
 
     void Run();
@@ -50,11 +54,13 @@ private:
 	// inter block jumps
 	void ColorBlocks();
 
+    llvm::Module *module;
+    bool verify;
+
     std::unique_ptr<MachineState> machine;
     std::unique_ptr<TBAA> tbaa;
 
     std::unique_ptr<llvm::IRBuilder<>> ir_builder;
-    llvm::Module *module;
 
     size_t block_address_array_base;
 	size_t block_address_array_size;

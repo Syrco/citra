@@ -12,6 +12,7 @@ namespace cl = llvm::cl;
 cl::opt<std::string> InputFilename(cl::Positional, cl::Required, cl::desc("<input rom filename>"));
 cl::opt<std::string> OutputFilename(cl::Positional, cl::Required, cl::desc("<output object filename>"));
 cl::opt<std::string> DebugFilename(cl::Positional, cl::Optional, cl::desc("<debug filename>"));
+cl::opt<bool> Verify("verify", cl::desc("<verify>"), cl::init(false));
 
 int main(int argc, const char *const *argv)
 {
@@ -39,6 +40,7 @@ int main(int argc, const char *const *argv)
     auto input_rom = InputFilename.c_str();
     auto output_object = OutputFilename.c_str();
     auto output_debug = DebugFilename.getNumOccurrences() ? DebugFilename.c_str() : nullptr;
+    bool verify = Verify;
 
 	Core::Init();
 	Memory::Init();
@@ -50,6 +52,6 @@ int main(int argc, const char *const *argv)
 		return -1;
 	}
 
-	CodeGen code_generator(output_object, output_debug);
+    CodeGen code_generator(output_object, output_debug, verify);
 	code_generator.Run();
 }

@@ -11,4 +11,5 @@ public:
     static void SetCpuState(ARMul_State *state);
     // Runs the state provided at SetCpuState.
     static void Run();
+    static void VerifyCallback();
 };

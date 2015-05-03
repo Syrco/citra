@@ -15,7 +15,7 @@ class ModuleGen;
 class CodeGen
 {
 public:
-	CodeGen(const char *output_object_filename, const char *output_debug_filename);
+	CodeGen(const char *output_object_filename, const char *output_debug_filename, bool verify);
 	~CodeGen();
 
     void Run();
@@ -27,6 +27,7 @@ public:
 private:
 	const char *output_object_filename;
 	const char *output_debug_filename;
+    bool verify;
 
     std::unique_ptr<ModuleGen> moduleGenerator;
 

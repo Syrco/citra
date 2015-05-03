@@ -18,9 +18,10 @@
 
 using namespace llvm;
 
-CodeGen::CodeGen(const char* output_object_filename, const char* output_debug_filename)
+CodeGen::CodeGen(const char* output_object_filename, const char* output_debug_filename, bool verify)
 	: output_object_filename(output_object_filename),
-	  output_debug_filename(output_debug_filename)
+	  output_debug_filename(output_debug_filename),
+      verify(verify)
 {
 }
 
@@ -68,7 +69,7 @@ void CodeGen::IntializeLLVM()
 
 void CodeGen::GenerateModule()
 {
-    moduleGenerator = std::make_unique<ModuleGen>(module.get());
+    moduleGenerator = std::make_unique<ModuleGen>(module.get(), verify);
     moduleGenerator->Run();
 }
 
