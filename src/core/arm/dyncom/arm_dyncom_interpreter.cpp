@@ -28,14 +28,15 @@ Common::Profiling::TimingCategory profile_execute("DynCom::Execute");
 Common::Profiling::TimingCategory profile_decode("DynCom::Decode");
 
 enum {
-    COND            = (1 << 0),
-    NON_BRANCH      = (1 << 1),
-    DIRECT_BRANCH   = (1 << 2),
-    INDIRECT_BRANCH = (1 << 3),
-    CALL            = (1 << 4),
-    RET             = (1 << 5),
-    END_OF_PAGE     = (1 << 6),
-    THUMB           = (1 << 7)
+    COND              = (1 << 0),
+    NON_BRANCH        = (1 << 1),
+    DIRECT_BRANCH     = (1 << 2),
+    INDIRECT_BRANCH   = (1 << 3),
+    CALL              = (1 << 4),
+    RET               = (1 << 5),
+    END_OF_PAGE       = (1 << 6),
+    THUMB             = (1 << 7),
+    BINARY_TRANSLATED = (1 << 8)
 };
 
 #define RM    BITS(sht_oper, 0, 3)
@@ -3653,6 +3654,10 @@ static int InterpreterTranslate(ARMul_State* cpu, int& bb_start, u32 addr) {
 translated:
         phys_addr += inst_size;
 
+        if (BinaryTranslationLoader::CanRun(phys_addr, cpu->TFlag))
+        {
+            inst_base->br = BINARY_TRANSLATED;
+        }
         if ((phys_addr & 0xfff) == 0) {
             inst_base->br = END_OF_PAGE;
         }

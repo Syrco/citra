@@ -130,6 +130,8 @@ void BinaryTranslationLoader::Load(FileUtil::IOFile& file)
     g_verify = *verify_ptr;
 
     g_enabled = true;
+
+    LOG_INFO(Loader, "Binary translation enabled");
 }
 
 void BinaryTranslationLoader::SetCpuState(ARMul_State* state)
@@ -153,6 +155,16 @@ bool BinaryTranslationLoader::CanRun(bool specific_address)
     if (specific_address)
         if (!g_can_run_function()) return false;
     return true;
+}
+
+bool BinaryTranslationLoader::CanRun(u32 pc, bool tflag)
+{
+    if (!g_enabled) return false;
+    if (tflag) return false;
+    std::swap(g_state->Reg[15], pc);
+    auto result = g_can_run_function();
+    std::swap(g_state->Reg[15], pc);
+    return result;
 }
 
 uint32_t BinaryTranslationLoader::Run(uint32_t instruction_count)
