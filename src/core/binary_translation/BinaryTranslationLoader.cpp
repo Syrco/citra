@@ -11,21 +11,66 @@ using namespace llvm;
 
 bool g_enabled = false;
 bool g_verify = false;
+ARMul_State *g_state;
 
 std::unique_ptr<SectionMemoryManager> g_memory_manager;
 std::unique_ptr<RuntimeDyld> g_dyld;
 std::unique_ptr<RuntimeDyld::LoadedObjectInfo> g_loaded_object_info;
 
-void (*g_run_function)();
+void(*g_run_function)();
+bool(*g_can_run_function)();
 
 // Used by the verifier
-bool (*g_can_run_function)();
+struct SavedState
+{
+    SavedState() { }
+    SavedState(const ARMul_State &state)
+    {
+        memcpy(regs, state.Reg, sizeof(regs));
+        memcpy(flags, &state.NFlag, sizeof(flags));
+        t_flag = state.TFlag;
+    }
+    void CopyTo(ARMul_State &state)
+    {
+        memcpy(state.Reg, regs, sizeof(regs));
+        memcpy(&state.NFlag, flags, sizeof(flags));
+        t_flag = state.TFlag;
+    }
+    void SwapWith(ARMul_State &state)
+    {
+        SavedState arm_state = state;
+        std::swap(*this, arm_state);
+        arm_state.CopyTo(state);
+    }
+    void Print()
+    {
+        LOG_ERROR(BinaryTranslator, "%08x %08x %08x %08x %08x %08x %08x %08x",
+            regs[0], regs[1], regs[2], regs[3],
+            regs[4], regs[5], regs[6], regs[7]);
+        LOG_ERROR(BinaryTranslator, "%08x %08x %08x %08x %08x %08x %08x %08x",
+            regs[8], regs[9], regs[10], regs[11],
+            regs[12], regs[13], regs[14], regs[15]);
+        LOG_ERROR(BinaryTranslator, "%01x %01x %01x %01x %01x", flags[0], flags[1], flags[2], flags[3], t_flag);
+    }
+
+    u32 regs[16];
+    u32 flags[4];
+    u32 t_flag;
+};
+
+bool operator==(const SavedState& lhs, const SavedState& rhs)
+{
+    return memcmp(&lhs, &rhs, sizeof(lhs)) == 0;
+}
+
+bool operator!=(const SavedState& lhs, const SavedState& rhs)
+{
+    return memcmp(&lhs, &rhs, sizeof(lhs)) != 0;
+}
+
 bool g_have_saved_state; // Whether there is a copied state
-ARMul_State *g_state;
-u32 g_regs_copy[16];
-u32 g_flags_copy[4];
-u32 g_regs_copy_before[16];
-u32 g_flags_copy_before[4];
+SavedState g_state_copy;
+SavedState g_state_copy_before;
 
 void BinaryTranslationLoader::Load(FileUtil::IOFile& file)
 {
@@ -90,12 +135,35 @@ void BinaryTranslationLoader::SetCpuState(ARMul_State* state)
     g_state = state;
 }
 
+bool BinaryTranslationLoader::CanRun(bool specific_address)
+{
+    if (!g_enabled) return false;
+    // Thumb not implemented
+    if (g_state->TFlag) return false;
+    if (specific_address)
+        if (!g_can_run_function()) return false;
+    return true;
+}
+
 void BinaryTranslationLoader::Run()
 {
+    // No need to check the PC, Run does it anyway
+    if (!CanRun(false)) return;
     // If verify is enabled, it will run opcodes
-    if (!g_enabled || g_verify) return;
+    if (g_verify) return;
 
+    RunInternal();
+}
+
+void BinaryTranslationLoader::RunInternal()
+{
     g_run_function();
+
+    g_state->TFlag = g_state->Reg[15] & 1;
+    if (g_state->TFlag)
+        g_state->Reg[15] &= 0xfffffffe;
+    else
+        g_state->Reg[15] &= 0xfffffffc;
 }
 
 void Swap(void *a, void *b, size_t size)
@@ -108,65 +176,53 @@ void Swap(void *a, void *b, size_t size)
     }
 }
 
-void ShowRegs(u32 *regs, u32 *flags)
-{
-    LOG_ERROR(BinaryTranslator, "%08x %08x %08x %08x %08x %08x %08x %08x",
-        regs[0], regs[1], regs[2], regs[3],
-        regs[4], regs[5], regs[6], regs[7]);
-    LOG_ERROR(BinaryTranslator, "%08x %08x %08x %08x %08x %08x %08x %08x",
-        regs[8], regs[9], regs[10], regs[11],
-        regs[12], regs[13], regs[14], regs[15]);
-    LOG_ERROR(BinaryTranslator, "%01x %01x %01x %01x", flags[0], flags[1], flags[2], flags[3]);
-}
-
 void BinaryTranslationLoader::VerifyCallback()
 {
     if (!g_enabled || !g_verify) return;
 
-    // Swap the PC to the old state before checking if it can run
-    std::swap(g_regs_copy[15], g_state->Reg[15]);
-    auto can_run = g_can_run_function();
-    std::swap(g_regs_copy[15], g_state->Reg[15]);
+    // Swap the PC and TFlag to the old state before checking if it can run
+    std::swap(g_state_copy.regs[15], g_state->Reg[15]);
+    std::swap(g_state_copy.t_flag, g_state->TFlag);
+    auto can_run = CanRun(true);
+    std::swap(g_state_copy.regs[15], g_state->Reg[15]);
+    std::swap(g_state_copy.t_flag, g_state->TFlag);
 
     if (g_have_saved_state && can_run)
     {
         // An opcode is finished, simulate it
 
         // Copy the state before
-        memcpy(g_regs_copy_before, g_regs_copy, sizeof(g_regs_copy));
-        memcpy(g_flags_copy_before, &g_flags_copy, sizeof(g_flags_copy));
+        g_state_copy_before = g_state_copy;
 
         // Swap to the state before the opcode
-        Swap(g_state->Reg, g_regs_copy, sizeof(g_regs_copy));
-        Swap(&g_state->NFlag, g_flags_copy, sizeof(g_flags_copy));
+        g_state_copy.SwapWith(*g_state);
 
         // Run the opcode
-        g_run_function();
+        RunInternal();
 
         // Test
-        if (memcmp(g_state->Reg, g_regs_copy, sizeof(g_regs_copy)) || memcmp(&g_state->NFlag, g_flags_copy, sizeof(g_flags_copy)))
+        auto current_as_saved_state = SavedState(*g_state);
+        if (current_as_saved_state != g_state_copy)
         {
             LOG_ERROR(BinaryTranslator, "Verify failed");
             LOG_ERROR(BinaryTranslator, "Regs Before");
-            ShowRegs(g_regs_copy_before, g_flags_copy_before);
+            g_state_copy_before.Print();
             LOG_ERROR(BinaryTranslator, "Regs OK");
-            ShowRegs(g_regs_copy, g_flags_copy);
+            g_state_copy.Print();
             LOG_ERROR(BinaryTranslator, "Regs not OK");
-            ShowRegs(g_state->Reg, &g_state->NFlag);
+            current_as_saved_state.Print();
 
             // Don't spam
             g_enabled = false;
 
             // Make sure it has a valid state to continue to run
-            Swap(g_state->Reg, g_regs_copy, sizeof(g_regs_copy));
-            Swap(&g_state->NFlag, g_flags_copy, sizeof(g_flags_copy));
+            g_state_copy.CopyTo(*g_state);
         }
     }
     else
     {
         // If this opcode is not translated or there is no saved state, just save the state and continue
-        memcpy(g_regs_copy, g_state->Reg, sizeof(g_regs_copy));
-        memcpy(g_flags_copy, &g_state->NFlag, sizeof(g_flags_copy));
+        g_state_copy = *g_state;
 
         g_have_saved_state = true;
     }

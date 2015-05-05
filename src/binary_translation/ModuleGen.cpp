@@ -152,7 +152,7 @@ void ModuleGen::GenerateGetBlockAddressFunction()
     /*
     entry_basic_block:
         auto index = (pc - block_address_array_base) / 4;
-        if(index < block_address_array_size)
+        if(((pc & 3) == 0) && index < block_address_array_size)
         {
     index_in_bounds_basic_block:
             return block_address_array[index];
@@ -169,10 +169,12 @@ void ModuleGen::GenerateGetBlockAddressFunction()
     auto index_out_of_bounds_basic_block = BasicBlock::Create(getGlobalContext(), "IndexOutOfBounds", get_block_address_function);
 
     ir_builder->SetInsertPoint(entry_basic_block);
-    auto index = ir_builder->CreateUDiv(pc, ir_builder->getInt32(4));
+    auto index = ir_builder->CreateUDiv(pc, ir_builder->getInt32(4), "", true);
     index = ir_builder->CreateSub(index, ir_builder->getInt32(block_address_array_base));
     auto in_bounds_pred = ir_builder->CreateICmpULT(index, ir_builder->getInt32(block_address_array_size));
-    ir_builder->CreateCondBr(in_bounds_pred, index_in_bounds_basic_block, index_out_of_bounds_basic_block);
+    auto arm_pred = ir_builder->CreateICmpEQ(ir_builder->CreateAnd(pc, 3), ir_builder->getInt32(0));
+    auto pred = ir_builder->CreateAnd(in_bounds_pred, arm_pred);
+    ir_builder->CreateCondBr(pred, index_in_bounds_basic_block, index_out_of_bounds_basic_block);
 
     ir_builder->SetInsertPoint(index_in_bounds_basic_block);
     Value *gep_values[] = { ir_builder->getInt32(0), index };
