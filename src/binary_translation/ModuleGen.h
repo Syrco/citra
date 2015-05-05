@@ -27,6 +27,7 @@ public:
 
     void Run();
 
+    void GenerateIncInstructionCount();
     // Generate code to read pc and run all following instructions, used in cases of indirect branch
     void BranchReadPC();
     // Generate code to write to pc and run all following instructions, used in cases of direct branch
@@ -80,6 +81,11 @@ private:
      */
     llvm::ArrayType *block_address_array_type;
     llvm::GlobalVariable *block_address_array;
+    /*
+     * i32 InstructionCount;
+     *  The count of instructions executed
+     */
+    llvm::GlobalVariable *instruction_count;
     /*
      * i8 *GetBlockAddress(u32 pc)
      *  Returns the address of the block for the instruction at pc

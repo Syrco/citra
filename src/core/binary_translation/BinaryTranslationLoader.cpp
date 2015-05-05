@@ -19,6 +19,7 @@ std::unique_ptr<RuntimeDyld::LoadedObjectInfo> g_loaded_object_info;
 
 void(*g_run_function)();
 bool(*g_can_run_function)();
+uint32_t *g_instruction_count;
 
 // Used by the verifier
 struct SavedState
@@ -117,7 +118,16 @@ void BinaryTranslationLoader::Load(FileUtil::IOFile& file)
 
     g_run_function = static_cast<decltype(g_run_function)>(g_dyld->getSymbolAddress("Run"));
     g_can_run_function = static_cast<decltype(g_can_run_function)>(g_dyld->getSymbolAddress("CanRun"));
-    g_verify = *static_cast<bool*>(g_dyld->getSymbolAddress("Verify"));
+    auto verify_ptr = static_cast<bool*>(g_dyld->getSymbolAddress("Verify"));
+    g_instruction_count = static_cast<uint32_t *>(g_dyld->getSymbolAddress("InstructionCount"));
+
+    if (!g_run_function || !g_can_run_function || !verify_ptr || !g_instruction_count)
+    {
+        LOG_WARNING(Loader, "Cannot load optimized file, missing critical function");
+        return;
+    }
+
+    g_verify = *verify_ptr;
 
     g_enabled = true;
 }
@@ -145,18 +155,19 @@ bool BinaryTranslationLoader::CanRun(bool specific_address)
     return true;
 }
 
-void BinaryTranslationLoader::Run()
+uint32_t BinaryTranslationLoader::Run(uint32_t instruction_count)
 {
     // No need to check the PC, Run does it anyway
-    if (!CanRun(false)) return;
+    if (!CanRun(false)) return instruction_count;
     // If verify is enabled, it will run opcodes
-    if (g_verify) return;
+    if (g_verify) return instruction_count;
 
-    RunInternal();
+    return RunInternal(instruction_count);
 }
 
-void BinaryTranslationLoader::RunInternal()
+uint32_t BinaryTranslationLoader::RunInternal(uint32_t instruction_count)
 {
+    *g_instruction_count = instruction_count;
     g_run_function();
 
     g_state->TFlag = g_state->Reg[15] & 1;
@@ -164,6 +175,8 @@ void BinaryTranslationLoader::RunInternal()
         g_state->Reg[15] &= 0xfffffffe;
     else
         g_state->Reg[15] &= 0xfffffffc;
+
+    return *g_instruction_count;
 }
 
 void Swap(void *a, void *b, size_t size)
@@ -198,7 +211,7 @@ void BinaryTranslationLoader::VerifyCallback()
         g_state_copy.SwapWith(*g_state);
 
         // Run the opcode
-        RunInternal();
+        RunInternal(0);
 
         // Test
         auto current_as_saved_state = SavedState(*g_state);

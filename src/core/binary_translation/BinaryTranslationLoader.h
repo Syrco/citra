@@ -13,8 +13,9 @@ public:
     // If specific_address, checks the specific PC too
     static bool CanRun(bool specific_address);
     // Runs the state provided at SetCpuState.
-    static void Run();
+    // Returns instruction_count + number of instructions executed
+    static uint32_t Run(uint32_t instruction_count);
     // Link between Run and VerifyCallback
-    static void RunInternal();
+    static uint32_t RunInternal(uint32_t instruction_count);
     static void VerifyCallback();
 };

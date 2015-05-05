@@ -28,6 +28,8 @@ void InstructionBlock::GenerateCode()
     auto ir_builder = Module()->IrBuilder();
     ir_builder->SetInsertPoint(entry_basic_block);
 
+    module->GenerateIncInstructionCount();
+
     instruction->GenerateCode(this);
 }
 

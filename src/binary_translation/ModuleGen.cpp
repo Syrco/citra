@@ -46,6 +46,15 @@ void ModuleGen::Run()
     GenerateBlockAddressArray();
 }
 
+void ModuleGen::GenerateIncInstructionCount()
+{
+    auto load = ir_builder->CreateLoad(instruction_count);
+    auto inc = ir_builder->CreateAdd(load, ir_builder->getInt32(1));
+    auto store = ir_builder->CreateStore(inc, instruction_count);
+    tbaa->TagInstructionCount(load);
+    tbaa->TagInstructionCount(store);
+}
+
 void ModuleGen::BranchReadPC()
 {
     if (verify)
@@ -111,6 +120,9 @@ void ModuleGen::GenerateGlobals()
 
     // bool Verify - contains the value of verify for citra usage
     new GlobalVariable(*module, ir_builder->getInt1Ty(), true, GlobalValue::ExternalLinkage, ir_builder->getInt1(verify), "Verify");
+
+    instruction_count = new GlobalVariable(*Module(), ir_builder->getInt32Ty(), false, GlobalValue::ExternalLinkage,
+        ir_builder->getInt32(0), "InstructionCount");
 }
 
 void ModuleGen::GenerateBlockAddressArray()
