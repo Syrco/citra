@@ -21,6 +21,7 @@ void TBAA::GenerateTags()
     }
     const_node = md_builder.createTBAAScalarTypeNode("Readonly", tbaa_root);
     instruction_count_node = md_builder.createTBAAScalarTypeNode("InstructionCount", tbaa_root);
+    memory_node = md_builder.createTBAAScalarTypeNode("Memory", tbaa_root);
 }
 
 void TBAA::TagRegister(Instruction* instruction, Register reg)
@@ -36,4 +37,9 @@ void TBAA::TagConst(Instruction* instruction)
 void TBAA::TagInstructionCount(llvm::Instruction* instruction)
 {
     instruction->setMetadata(LLVMContext::MD_tbaa, instruction_count_node);
+}
+
+void TBAA::TagMemory(llvm::Instruction* instruction)
+{
+    instruction->setMetadata(LLVMContext::MD_tbaa, memory_node);
 }

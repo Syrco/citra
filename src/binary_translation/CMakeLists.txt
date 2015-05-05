@@ -13,6 +13,7 @@ set(SRCS
 			Instructions/MovShift.cpp
 			Instructions/Branch.cpp
 			Instructions/Arithmetic.cpp
+			Instructions/Ldr.cpp
             )
 set(HEADERS
 			CodeGen.h
@@ -30,6 +31,7 @@ set(HEADERS
 			Instructions/MovShift.h
 			Instructions/Branch.h
 			Instructions/Arithmetic.h
+			Instructions/Ldr.h
             )
 			
 create_directory_groups(${SRCS} ${HEADERS})

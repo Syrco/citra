@@ -23,6 +23,12 @@ void MachineState::GenerateGlobals()
     auto flags_global_initializer = ConstantPointerNull::get(IntegerType::getInt1PtrTy(getGlobalContext()));
     flags_global = new GlobalVariable(*module->Module(), flags_global_initializer->getType(),
         false, GlobalValue::ExternalLinkage, flags_global_initializer, "Flags");
+
+    auto memory_read_32_signature = FunctionType::get(IntegerType::getInt32Ty(getGlobalContext()), IntegerType::getInt32Ty(getGlobalContext()), false);
+    auto memory_read_32_ptr = PointerType::get(memory_read_32_signature, 0);
+    auto memory_read_32_initializer = ConstantPointerNull::get(memory_read_32_ptr);
+    memory_read_32_global = new GlobalVariable(*module->Module(), memory_read_32_ptr,
+        false, GlobalValue::ExternalLinkage, memory_read_32_initializer, "Memory::Read32");
 }
 
 Value *MachineState::GetRegisterPtr(Register reg)
@@ -87,4 +93,17 @@ Value* MachineState::ConditionPassed(Condition cond)
 
     if (not) pred = ir_builder->CreateNot(pred);
     return pred;
+}
+
+llvm::Value* MachineState::ReadMemory32(llvm::Value* address)
+{
+    auto ir_builder = module->IrBuilder();
+
+    auto memory_read_32 = ir_builder->CreateLoad(memory_read_32_global);
+    module->GetTBAA()->TagConst(memory_read_32);
+
+    auto call = ir_builder->CreateCall(memory_read_32, address);
+    call->setOnlyReadsMemory();
+    module->GetTBAA()->TagMemory(call);
+    return call;
 }

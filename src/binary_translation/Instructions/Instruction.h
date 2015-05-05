@@ -107,5 +107,5 @@ Instruction::FieldDefObject Instruction::FieldDef(Type* field)
 template <typename Type>
 void Instruction::WriteFunction(u32 value, void *field_address)
 {
-    *static_cast<Type *>(field_address) = static_cast<Type>(value);
+    *static_cast<Type *>(field_address) = Type(value);
 }

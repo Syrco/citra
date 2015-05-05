@@ -23,6 +23,7 @@ public:
     llvm::Value *ReadRegiser(Register reg);
     llvm::Value *WriteRegiser(Register reg, llvm::Value *value);
     llvm::Value* ConditionPassed(Condition cond);
+    llvm::Value* ReadMemory32(llvm::Value* address);
 private:
     // Returns the address of a register or a flag
     llvm::Value *GetRegisterPtr(Register reg);
@@ -40,4 +41,10 @@ private:
     *  Orderered N, Z, C, V
     */
     llvm::GlobalVariable *flags_global;
+
+    /*
+    * u32 (u32) Memory::Read
+    *  Reads the memory at address
+    */
+    llvm::GlobalVariable *memory_read_32_global;
 };

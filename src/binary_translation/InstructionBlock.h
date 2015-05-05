@@ -49,8 +49,7 @@ public:
      * Creates a basic block for use by instructions
      */
     llvm::BasicBlock *CreateBasicBlock(const char *name);
-
-	/*
+    /*
 	 * Links two instructions, adding to prev and next lists
 	 */
 	static void Link(InstructionBlock *prev, InstructionBlock *next);

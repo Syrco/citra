@@ -6,6 +6,7 @@
 #include <llvm/Object/ObjectFile.h>
 #include <llvm/ExecutionEngine/RuntimeDyld.h>
 #include <llvm/ExecutionEngine/SectionMemoryManager.h>
+#include <core/mem_map.h>
 
 using namespace llvm;
 
@@ -120,14 +121,16 @@ void BinaryTranslationLoader::Load(FileUtil::IOFile& file)
     g_can_run_function = static_cast<decltype(g_can_run_function)>(g_dyld->getSymbolAddress("CanRun"));
     auto verify_ptr = static_cast<bool*>(g_dyld->getSymbolAddress("Verify"));
     g_instruction_count = static_cast<uint32_t *>(g_dyld->getSymbolAddress("InstructionCount"));
+    auto memory_read_32_ptr = static_cast<decltype(&Memory::Read32) *>(g_dyld->getSymbolAddress("Memory::Read32"));
 
-    if (!g_run_function || !g_can_run_function || !verify_ptr || !g_instruction_count)
+    if (!g_run_function || !g_can_run_function || !verify_ptr || !g_instruction_count || !memory_read_32_ptr)
     {
         LOG_WARNING(Loader, "Cannot load optimized file, missing critical function");
         return;
     }
 
     g_verify = *verify_ptr;
+    *memory_read_32_ptr = &Memory::Read32;
 
     g_enabled = true;
 
