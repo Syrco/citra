@@ -27,6 +27,10 @@ public:
     {
         llvm::Value *result, *carry;
     };
+    struct ResultCarryOverflow
+    {
+        llvm::Value *result, *carry, *overflow;
+    };
 
     static ShiftTN DecodeImmShift(InstructionBlock *instruction, u32 type, u32 imm5);
     static SRType DecodeRegShift(u32 type);
@@ -41,5 +45,8 @@ public:
     static ResultCarry ROR_C(InstructionBlock *instruction, llvm::Value *x, llvm::Value *shift);
     static ResultCarry RRX_C(InstructionBlock *instruction, llvm::Value *x, llvm::Value *carry_in);
 
+    static llvm::Value *ARMExpandImm(InstructionBlock *instruction, u32 imm12);
 	static ResultCarry ARMExpandImm_C(InstructionBlock *instruction, u32 imm12, llvm::Value *carry);
+
+    static ResultCarryOverflow AddWithCarry(InstructionBlock *instruction, llvm::Value *x, llvm::Value *y, llvm::Value *carry_in);
 };

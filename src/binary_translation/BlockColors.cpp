@@ -82,10 +82,24 @@ void BlockColors::AddBasicBlocksToFunction(Function* function, BasicBlock* basic
 		return;
 	}
 
-	basic_block->insertInto(function);
-	auto terminator = basic_block->getTerminator();
-	for (auto i = 0; i < terminator->getNumSuccessors(); ++i)
-	{
-		AddBasicBlocksToFunction(function, terminator->getSuccessor(i));
-	}
+    std::stack<BasicBlock *> basic_blocks;
+    basic_blocks.push(basic_block);
+    while (basic_blocks.size())
+    {
+        auto top = basic_blocks.top();
+        basic_blocks.pop();
+
+        top->insertInto(function);
+        auto terminator = top->getTerminator();
+        for (auto i = 0; i < terminator->getNumSuccessors(); ++i)
+        {
+            auto next = terminator->getSuccessor(i);
+            if (next->getParent())
+            {
+                assert(next->getParent() == function);
+                continue;
+            }
+            basic_blocks.push(next);
+        }
+    }
 }

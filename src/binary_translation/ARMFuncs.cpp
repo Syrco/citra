@@ -131,6 +131,13 @@ ARMFuncs::ResultCarry ARMFuncs::RRX_C(InstructionBlock* instruction, llvm::Value
     return{ result, carry };
 }
 
+llvm::Value* ARMFuncs::ARMExpandImm(InstructionBlock* instruction, u32 imm12)
+{
+    auto ir_builder = instruction->IrBuilder();
+    // Manual says carry in does not affect the result, so use undef
+    return ARMExpandImm_C(instruction, imm12, llvm::UndefValue::get(ir_builder->getInt1Ty())).result;
+}
+
 ARMFuncs::ResultCarry ARMFuncs::ARMExpandImm_C(InstructionBlock *instruction, u32 imm12, llvm::Value* carry)
 {
 	auto ir_builder = instruction->IrBuilder();
@@ -138,4 +145,27 @@ ARMFuncs::ResultCarry ARMFuncs::ARMExpandImm_C(InstructionBlock *instruction, u3
 	auto value = ir_builder->getInt32(imm12 & 0xFF);
 	auto shift = ir_builder->getInt32(2 * (imm12 >> 8));
 	return Shift_C(instruction, value, SRType::ROR, shift, carry);
+}
+
+// AddWithCarry from armsupp.cpp
+ARMFuncs::ResultCarryOverflow ARMFuncs::AddWithCarry(InstructionBlock* instruction, llvm::Value* x, llvm::Value* y, llvm::Value* carry_in)
+{
+    auto ir_builder = instruction->IrBuilder();
+
+    auto xu64 = ir_builder->CreateZExt(x, ir_builder->getInt64Ty());
+    auto xs64 = ir_builder->CreateSExt(x, ir_builder->getInt64Ty());
+    auto yu64 = ir_builder->CreateZExt(y, ir_builder->getInt64Ty());
+    auto ys64 = ir_builder->CreateSExt(y, ir_builder->getInt64Ty());
+    auto c64 = ir_builder->CreateZExt(carry_in, ir_builder->getInt64Ty());
+
+    auto unsignedSum = ir_builder->CreateAdd(ir_builder->CreateAdd(xu64, yu64), c64);
+    auto singedSum = ir_builder->CreateAdd(ir_builder->CreateAdd(xs64, ys64), c64);
+    auto result32 = ir_builder->CreateTrunc(unsignedSum, ir_builder->getInt32Ty());
+    auto resultU64 = ir_builder->CreateZExt(result32, ir_builder->getInt64Ty());
+    auto resultS64 = ir_builder->CreateSExt(result32, ir_builder->getInt64Ty());
+
+    auto carry = ir_builder->CreateICmpNE(resultU64, unsignedSum);
+    auto overflow = ir_builder->CreateICmpNE(resultS64, singedSum);
+
+    return{ result32, carry, overflow };
 }

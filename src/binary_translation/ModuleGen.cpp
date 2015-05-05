@@ -243,7 +243,9 @@ void ModuleGen::DecodeInstructions()
     for (auto i = Loader::ROMCodeStart; i <= Loader::ROMCodeStart + Loader::ROMCodeSize - 4; i += 4)
     {
         ++total;
-        auto instruction = Disassembler::Disassemble(Memory::Read32(i), i);
+        auto bytes = Memory::Read32(i);
+        if (bytes == 0) continue;
+        auto instruction = Disassembler::Disassemble(bytes, i);
         if (instruction == nullptr) continue;
         ++generated;
         auto instruction_block = std::make_unique<InstructionBlock>(this, instruction.release());

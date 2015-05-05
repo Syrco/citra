@@ -1,11 +1,6 @@
 #include "Instruction.h"
 #include "Types.h"
 
-/*
- * Data processing instructions
- * ARMv7-A 5.2.1 (register), 5.2.2 (register-shifted register, 5.2.3 (immediate)
- */
-
 class Branch : public Instruction
 {
 public:
