@@ -3654,10 +3654,12 @@ static int InterpreterTranslate(ARMul_State* cpu, int& bb_start, u32 addr) {
 translated:
         phys_addr += inst_size;
 
+#if ENABLE_BINARY_TRANSLATION
         if (BinaryTranslationLoader::CanRun(phys_addr, cpu->TFlag))
         {
             inst_base->br = BINARY_TRANSLATED;
         }
+#endif
         if ((phys_addr & 0xfff) == 0) {
             inst_base->br = END_OF_PAGE;
         }
@@ -3719,10 +3721,15 @@ unsigned InterpreterMainLoop(ARMul_State* cpu) {
     num_instrs++; \
     goto *InstLabel[inst_base->idx]
 #else
+#if ENABLE_BINARY_TRANSLATION
+#define BINARY_TRANSLATION_VERIFY_CALLBACK BinaryTranslationLoader::VerifyCallback(); 
+#else
+#define BINARY_TRANSLATION_VERIFY_CALLBACK
+#endif
 #define GOTO_NEXT_INST \
     if (num_instrs >= cpu->NumInstrsToExecute) goto END; \
     num_instrs++; \
-    BinaryTranslationLoader::VerifyCallback(); \
+    BINARY_TRANSLATION_VERIFY_CALLBACK \
     switch(inst_base->idx) { \
     case 0: goto VMLA_INST; \
     case 1: goto VMLS_INST; \
