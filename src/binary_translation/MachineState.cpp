@@ -15,6 +15,8 @@ MachineState::MachineState(ModuleGen *module) : module(module)
 
 void MachineState::GenerateGlobals()
 {
+    auto ir_builder = module->IrBuilder();
+
     auto registers_global_initializer = ConstantPointerNull::get(IntegerType::getInt32PtrTy(getGlobalContext()));
     registers_global = new GlobalVariable(*module->Module(), registers_global_initializer->getType(),
         false, GlobalValue::ExternalLinkage, registers_global_initializer, "Registers");
@@ -24,11 +26,18 @@ void MachineState::GenerateGlobals()
     flags_global = new GlobalVariable(*module->Module(), flags_global_initializer->getType(),
         false, GlobalValue::ExternalLinkage, flags_global_initializer, "Flags");
 
-    auto memory_read_32_signature = FunctionType::get(IntegerType::getInt32Ty(getGlobalContext()), IntegerType::getInt32Ty(getGlobalContext()), false);
+    auto memory_read_32_signature = FunctionType::get(ir_builder->getInt32Ty(), ir_builder->getInt32Ty(), false);
     auto memory_read_32_ptr = PointerType::get(memory_read_32_signature, 0);
     auto memory_read_32_initializer = ConstantPointerNull::get(memory_read_32_ptr);
     memory_read_32_global = new GlobalVariable(*module->Module(), memory_read_32_ptr,
         false, GlobalValue::ExternalLinkage, memory_read_32_initializer, "Memory::Read32");
+
+    llvm::Type *memory_write_32_args[] = { ir_builder->getInt32Ty(), ir_builder->getInt32Ty() };
+    auto memory_write_32_signature = FunctionType::get(ir_builder->getVoidTy(), memory_write_32_args, false);
+    auto memory_write_32_ptr = PointerType::get(memory_write_32_signature, 0);
+    auto memory_write_32_initializer = ConstantPointerNull::get(memory_write_32_ptr);
+    memory_write_32_global = new GlobalVariable(*module->Module(), memory_write_32_ptr,
+        false, GlobalValue::ExternalLinkage, memory_write_32_initializer, "Memory::Write32");
 }
 
 Value *MachineState::GetRegisterPtr(Register reg)
@@ -50,8 +59,9 @@ Value *MachineState::GetRegisterPtr(Register reg)
     return module->IrBuilder()->CreateConstInBoundsGEP1_32(base, index);
 }
 
-Value* MachineState::ReadRegiser(Register reg)
+Value* MachineState::ReadRegiser(Register reg, bool allow_pc)
 {
+    assert(allow_pc || reg != Register::PC);
     auto load = module->IrBuilder()->CreateAlignedLoad(GetRegisterPtr(reg), 4);
     module->GetTBAA()->TagRegister(load, reg);
     return load;
@@ -106,4 +116,16 @@ llvm::Value* MachineState::ReadMemory32(llvm::Value* address)
     call->setOnlyReadsMemory();
     module->GetTBAA()->TagMemory(call);
     return call;
+}
+
+llvm::Value* MachineState::WriteMemory32(llvm::Value* address, llvm::Value* value)
+{
+    auto ir_builder = module->IrBuilder();
+
+    auto memory_write_32 = ir_builder->CreateLoad(memory_write_32_global);
+    module->GetTBAA()->TagConst(memory_write_32);
+
+    auto call = ir_builder->CreateCall2(memory_write_32, address, value);
+    module->GetTBAA()->TagMemory(call);
+    return value;
 }

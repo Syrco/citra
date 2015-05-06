@@ -204,7 +204,7 @@ void ModuleGen::GenerateCanRunFunction()
     auto basic_block = BasicBlock::Create(getGlobalContext(), "Entry", can_run_function);
 
     ir_builder->SetInsertPoint(basic_block);
-    auto block_address = ir_builder->CreateCall(get_block_address_function, machine->ReadRegiser(Register::PC));
+    auto block_address = ir_builder->CreateCall(get_block_address_function, machine->ReadRegiser(Register::PC, true));
 	auto function = ir_builder->CreateExtractValue(block_address, 0);
 	ir_builder->CreateRet(ir_builder->CreateICmpNE(function,
 		ConstantPointerNull::get(cast<PointerType>(function->getType()))));
@@ -232,7 +232,7 @@ void ModuleGen::GenerateRunFunction()
     auto block_not_present_basic_block = BasicBlock::Create(getGlobalContext(), "BlockNotPresent", run_function);
 
 	ir_builder->SetInsertPoint(run_function_entry);
-	auto block_address = ir_builder->CreateCall(get_block_address_function, Machine()->ReadRegiser(Register::PC));
+	auto block_address = ir_builder->CreateCall(get_block_address_function, Machine()->ReadRegiser(Register::PC, true));
 	auto function = ir_builder->CreateExtractValue(block_address, 0);
 	auto block_present_pred = ir_builder->CreateICmpNE(function,
 		ConstantPointerNull::get(cast<PointerType>(function->getType())));

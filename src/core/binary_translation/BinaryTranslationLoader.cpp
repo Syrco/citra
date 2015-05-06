@@ -122,8 +122,9 @@ void BinaryTranslationLoader::Load(FileUtil::IOFile& file)
     auto verify_ptr = static_cast<bool*>(g_dyld->getSymbolAddress("Verify"));
     g_instruction_count = static_cast<uint32_t *>(g_dyld->getSymbolAddress("InstructionCount"));
     auto memory_read_32_ptr = static_cast<decltype(&Memory::Read32) *>(g_dyld->getSymbolAddress("Memory::Read32"));
+    auto memory_write_32_ptr = static_cast<decltype(&Memory::Write32) *>(g_dyld->getSymbolAddress("Memory::Write32"));
 
-    if (!g_run_function || !g_can_run_function || !verify_ptr || !g_instruction_count || !memory_read_32_ptr)
+    if (!g_run_function || !g_can_run_function || !verify_ptr || !g_instruction_count || !memory_read_32_ptr || !memory_write_32_ptr)
     {
         LOG_WARNING(Loader, "Cannot load optimized file, missing critical function");
         return;
@@ -131,6 +132,7 @@ void BinaryTranslationLoader::Load(FileUtil::IOFile& file)
 
     g_verify = *verify_ptr;
     *memory_read_32_ptr = &Memory::Read32;
+    *memory_write_32_ptr = &Memory::Write32;
 
     g_enabled = true;
 

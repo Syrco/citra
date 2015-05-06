@@ -70,8 +70,8 @@ void Ldr::GenerateInstructionCode(InstructionBlock* instruction_block)
         }
         else
         {
-            auto index = (bool)P;
-            auto wback = !P || W;
+            auto index = P == 1;
+            auto wback = P == 0 || W == 1;
             auto source_register = instruction_block->Read(rn);
             auto imm32 = ir_builder->getInt32(add ? imm12 : -imm12);
 

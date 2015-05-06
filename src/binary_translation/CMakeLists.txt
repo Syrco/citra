@@ -14,6 +14,7 @@ set(SRCS
 			Instructions/Branch.cpp
 			Instructions/Arithmetic.cpp
 			Instructions/Ldr.cpp
+			Instructions/Str.cpp
             )
 set(HEADERS
 			CodeGen.h
@@ -32,6 +33,7 @@ set(HEADERS
 			Instructions/Branch.h
 			Instructions/Arithmetic.h
 			Instructions/Ldr.h
+			Instructions/Str.h
             )
 			
 create_directory_groups(${SRCS} ${HEADERS})
