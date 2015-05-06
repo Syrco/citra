@@ -22,7 +22,7 @@ bool Ldr::Decode()
         form = Form::Reg;
 
         if (!P && W) return false; // SEE LDRT;
-        if (rn == Register::SP && !P && U && !W && imm12 == 4) return false; // SEE POP;
+        //if (rn == Register::SP && !P && U && !W && imm12 == 4) return false; // SEE POP;
         if ((!P || W) && rn == rt) return false; // UNPREDICTABLE;
 
         return true;
@@ -32,7 +32,7 @@ bool Ldr::Decode()
     {
         form = Form::MultiReg;
 
-        if (W && rn == Register::SP && register_list.size() > 1) return false; // SEE POP (ARM);
+        //if (W && rn == Register::SP && register_list.size() > 1) return false; // SEE POP (ARM);
         if (rn == Register::PC || register_list.size() < 1) return false; // UNPREDICTABLE;
         if (W && register_list[(u32)rn]) return false; // UNPREDICTABLE;
 
