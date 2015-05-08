@@ -18,18 +18,6 @@ ARMFuncs::ShiftTN ARMFuncs::DecodeImmShift(InstructionBlock* instruction, u32 ty
     }
 }
 
-ARMFuncs::SRType ARMFuncs::DecodeRegShift(u32 type)
-{
-    switch (type)
-    {
-    case 0: return SRType::LSL;
-    case 1: return SRType::LSR;
-    case 2: return SRType::ASR;
-    case 3: return SRType::ROR;
-    default: assert(false, "Invalid shift type");
-    }
-}
-
 llvm::Value* ARMFuncs::Shift(InstructionBlock* instruction, llvm::Value* value, SRType type, llvm::Value* amount, llvm::Value* carry_in)
 {
     return Shift_C(instruction, value, type, amount, carry_in).result;

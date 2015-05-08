@@ -1,3 +1,4 @@
+#pragma once
 
 enum class Condition;
 enum class Register;

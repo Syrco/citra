@@ -24,7 +24,7 @@ public:
      */
     void GenerateCode(InstructionBlock *instruction_block);
 
-    u32 Address() { return address; }
+    u32 Address() const { return address; }
 protected:
     /*
      * Derived classes must override this, and implement it by calling ReadFields

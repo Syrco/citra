@@ -19,7 +19,7 @@ public:
 	~CodeGen();
 
     void Run();
-    void IntializeLLVM();
+    void InitializeLLVM();
     void GenerateModule();
     void GenerateDebugFiles();
     bool Verify();

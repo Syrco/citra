@@ -54,18 +54,18 @@ public:
 	 */
 	static void Link(InstructionBlock *prev, InstructionBlock *next);
 
-    u32 Address();
+    u32 Address() const;
     ModuleGen *Module() { return module; }
     llvm::IRBuilder<> *IrBuilder() { return module->IrBuilder(); }
 
     llvm::BasicBlock *GetEntryBasicBlock() { return entry_basic_block; }
 
-	bool HasColor() { return has_color; }
+	bool HasColor() const { return has_color; }
 	void SetColor(size_t color) { this->color = color; has_color = true; }
-	size_t GetColor() { return color; }
+    size_t GetColor() const { return color; }
 
-	std::list<InstructionBlock *> GetNexts() { return nexts; }
-	std::list<InstructionBlock *> GetPrevs() { return prevs; }
+	std::list<InstructionBlock *> GetNexts() const { return nexts; }
+    std::list<InstructionBlock *> GetPrevs() const { return prevs; }
 private:
     // Textual representation of the address
     // Used to generate names

@@ -9,8 +9,7 @@ public:
         Immediate, Register
     };
 
-public:
-    virtual bool Decode() override;
+    bool Decode() override;
     void GenerateInstructionCode(InstructionBlock* instruction_block) override;
 private:
     Form form;

@@ -28,10 +28,10 @@ const std::initializer_list<Kernel::AddressMapping> default_address_mappings = {
     { 0x1FF70000,   0x8000, true  }, // part of DSP RAM
     { 0x1F000000, 0x600000, false }, // entire VRAM
 };
-u32 ROMCodeStart = 0;
-u32 ROMCodeSize = 0;
-u32 ROMReadOnlyDataStart = 0;
-u32 ROMReadOnlyDataSize = 0;
+u32 ROMCodeStart;
+u32 ROMCodeSize;
+u32 ROMReadOnlyDataStart;
+u32 ROMReadOnlyDataSize;
 
 /**
  * Identifies the type of a bootable file
@@ -97,6 +97,11 @@ static const char* GetFileTypeString(FileType type) {
 }
 
 ResultStatus LoadFile(const std::string& filename) {
+    ROMCodeStart = 0;
+    ROMCodeSize = 0;
+    ROMReadOnlyDataStart = 0;
+    ROMReadOnlyDataSize = 0;
+
     std::unique_ptr<FileUtil::IOFile> file(new FileUtil::IOFile(filename, "rb"));
     if (!file->IsOpen()) {
         LOG_ERROR(Loader, "Failed to load file %s", filename.c_str());

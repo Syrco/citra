@@ -33,7 +33,6 @@ public:
     };
 
     static ShiftTN DecodeImmShift(InstructionBlock *instruction, u32 type, u32 imm5);
-    static SRType DecodeRegShift(u32 type);
 
     static llvm::Value *Shift(InstructionBlock *instruction, llvm::Value *value, SRType type, llvm::Value *amount, llvm::Value *carry_in);
     static ResultCarry Shift_C(InstructionBlock *instruction, llvm::Value *value, SRType type, llvm::Value *amount, llvm::Value *carry_in);

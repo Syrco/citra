@@ -18,8 +18,7 @@ public:
         Register, ImmediateA1, ImmediateA2
     };
 
-public:
-    virtual bool Decode() override;
+    bool Decode() override;
     void GenerateInstructionCode(InstructionBlock* instruction_block) override;
 private:
     Form form;

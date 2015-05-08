@@ -20,13 +20,12 @@ public:
         BitwiseOr = 12, MoveAndShifts, BitwiseBitClear, BitwiseNot
     };
 
-public:
-    virtual bool Decode() override;
+    bool Decode() override;
     void GenerateInstructionCode(InstructionBlock* instruction_block) override;
 private:
     Form form;
     Op op;
-    bool s;
+    bool set_flags;
     Register rn;
     Register rd;
     u32 imm5;

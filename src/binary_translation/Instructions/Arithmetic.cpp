@@ -27,32 +27,28 @@ bool IsSupported(Arithmetic::Op op)
 
 bool IsBitwise(Arithmetic::Op op)
 {
-    switch (op)
-    {
-    case Arithmetic::Op::BitwiseAnd: return true;
-    case Arithmetic::Op::BitwiseXor: return true;
-    case Arithmetic::Op::BitwiseOr: return true;
-    case Arithmetic::Op::BitwiseBitClear: return true;
-    default: break;
-    }
+    return op == Arithmetic::Op::BitwiseAnd ||
+           op == Arithmetic::Op::BitwiseXor ||
+           op == Arithmetic::Op::BitwiseOr ||
+           op == Arithmetic::Op::BitwiseBitClear;
 }
 
 bool Arithmetic::Decode()
 {
-    if (ReadFields({ CondDef(), FieldDef<3>(0), FieldDef<4>(&op), FieldDef<1>(&s), FieldDef<4>(&rn),
+    if (ReadFields({ CondDef(), FieldDef<3>(0), FieldDef<4>(&op), FieldDef<1>(&set_flags), FieldDef<4>(&rn),
                      FieldDef<4>(&rd), FieldDef<5>(&imm5), FieldDef<2>(&type), FieldDef<1>(0), FieldDef<4>(&rm)}))
     {
         form = Form::Register;
-        if (rd == Register::PC && s) return false; // SEE SUBS PC, LR and related instructions;
+        if (rd == Register::PC && set_flags) return false; // SEE SUBS PC, LR and related instructions;
         if (rn == Register::PC) return false;
         if (rm == Register::PC) return false;
         return IsSupported(op);
     }
-    if (ReadFields({ CondDef(), FieldDef<3>(1), FieldDef<4>(&op), FieldDef<1>(&s), FieldDef<4>(&rn),
+    if (ReadFields({ CondDef(), FieldDef<3>(1), FieldDef<4>(&op), FieldDef<1>(&set_flags), FieldDef<4>(&rn),
         FieldDef<4>(&rd), FieldDef<12>(&imm12) }))
     {
         form = Form::Immediate;
-        if (rd == Register::PC && s) return false; // SEE SUBS PC, LR and related instructions;
+        if (rd == Register::PC && set_flags) return false; // SEE SUBS PC, LR and related instructions;
         if (rn == Register::PC) return false;
         return IsSupported(op);
     }
@@ -117,7 +113,7 @@ void Arithmetic::GenerateInstructionCode(InstructionBlock* instruction_block)
 
     instruction_block->Write(rd, result.result);
 
-    if (s)
+    if (set_flags)
     {
         instruction_block->Write(Register::N, ir_builder->CreateICmpSLT(result.result, ir_builder->getInt32(0)));
         instruction_block->Write(Register::Z, ir_builder->CreateICmpEQ(result.result, ir_builder->getInt32(0)));

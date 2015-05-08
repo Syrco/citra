@@ -37,14 +37,14 @@ void CodeGen::Run()
         return;
 	}
 
-    IntializeLLVM();
+    InitializeLLVM();
     GenerateModule();
     GenerateDebugFiles();
     if (!Verify()) return;
     OptimizeAndGenerate();
 }
 
-void CodeGen::IntializeLLVM()
+void CodeGen::InitializeLLVM()
 {
     InitializeNativeTarget();
     InitializeNativeTargetAsmPrinter();

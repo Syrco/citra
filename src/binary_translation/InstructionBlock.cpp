@@ -54,7 +54,7 @@ void InstructionBlock::Link(InstructionBlock* prev, InstructionBlock* next)
 	next->prevs.push_back(prev);
 }
 
-u32 InstructionBlock::Address()
+u32 InstructionBlock::Address() const
 {
     return instruction->Address();
 }
