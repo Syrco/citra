@@ -15,8 +15,8 @@ class ModuleGen;
 class CodeGen
 {
 public:
-	CodeGen(const char *output_object_filename, const char *output_debug_filename, bool verify);
-	~CodeGen();
+    CodeGen(const char *output_object_filename, const char *output_debug_filename, bool verify);
+    ~CodeGen();
 
     void Run();
     void InitializeLLVM();
@@ -25,8 +25,8 @@ public:
     bool Verify();
     void OptimizeAndGenerate();
 private:
-	const char *output_object_filename;
-	const char *output_debug_filename;
+    const char *output_object_filename;
+    const char *output_debug_filename;
     bool verify;
 
     std::unique_ptr<ModuleGen> moduleGenerator;

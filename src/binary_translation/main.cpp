@@ -28,30 +28,30 @@ int main(int argc, const char *const *argv)
     }
     cl::ParseCommandLineOptions(argc, argv);
 
-	std::shared_ptr<Log::Logger> logger = Log::InitGlobalLogger();
-	Log::Filter log_filter(Log::Level::Debug);
-	Log::SetFilter(&log_filter);
-	std::thread logging_thread(Log::TextLoggingLoop, logger);
-	SCOPE_EXIT({
-		logger->Close();
-		logging_thread.join();
-	});
+    std::shared_ptr<Log::Logger> logger = Log::InitGlobalLogger();
+    Log::Filter log_filter(Log::Level::Debug);
+    Log::SetFilter(&log_filter);
+    std::thread logging_thread(Log::TextLoggingLoop, logger);
+    SCOPE_EXIT({
+        logger->Close();
+        logging_thread.join();
+    });
 
     auto input_rom = InputFilename.c_str();
     auto output_object = OutputFilename.c_str();
     auto output_debug = DebugFilename.getNumOccurrences() ? DebugFilename.c_str() : nullptr;
     bool verify = Verify;
 
-	Core::Init();
-	Memory::Init();
+    Core::Init();
+    Memory::Init();
 
-	auto load_result = Loader::LoadFile(input_rom);
-	if (Loader::ResultStatus::Success != load_result)
-	{
+    auto load_result = Loader::LoadFile(input_rom);
+    if (Loader::ResultStatus::Success != load_result)
+    {
         LOG_CRITICAL(BinaryTranslator, "Failed to load ROM (Error %i)!", load_result);
-		return -1;
-	}
+        return -1;
+    }
 
     CodeGen code_generator(output_object, output_debug, verify);
-	code_generator.Run();
+    code_generator.Run();
 }

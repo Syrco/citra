@@ -19,8 +19,8 @@
 using namespace llvm;
 
 CodeGen::CodeGen(const char* output_object_filename, const char* output_debug_filename, bool verify)
-	: output_object_filename(output_object_filename),
-	  output_debug_filename(output_debug_filename),
+    : output_object_filename(output_object_filename),
+      output_debug_filename(output_debug_filename),
       verify(verify)
 {
 }
@@ -31,11 +31,11 @@ CodeGen::~CodeGen()
 
 void CodeGen::Run()
 {
-	if (!Loader::ROMCodeStart)
-	{
-		LOG_CRITICAL(BinaryTranslator, "No information from the loader about ROM file.");
+    if (!Loader::ROMCodeStart)
+    {
+        LOG_CRITICAL(BinaryTranslator, "No information from the loader about ROM file.");
         return;
-	}
+    }
 
     InitializeLLVM();
     GenerateModule();

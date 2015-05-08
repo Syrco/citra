@@ -27,7 +27,7 @@ ARMFuncs::ResultCarry ARMFuncs::Shift_C(InstructionBlock* instruction, llvm::Val
 {
     auto ir_builder = instruction->IrBuilder();
 
-	auto amount_zero = ir_builder->CreateICmpEQ(amount, ir_builder->getInt32(0));
+    auto amount_zero = ir_builder->CreateICmpEQ(amount, ir_builder->getInt32(0));
     ResultCarry result_amount_not_zero = {};
     switch (type)
     {
@@ -39,8 +39,8 @@ ARMFuncs::ResultCarry ARMFuncs::Shift_C(InstructionBlock* instruction, llvm::Val
     default: assert(false, "Invalid shift type");
     }
 
-	auto result = ir_builder->CreateSelect(amount_zero, value, result_amount_not_zero.result);
-	auto carry = ir_builder->CreateSelect(amount_zero, carry_in, result_amount_not_zero.carry);
+    auto result = ir_builder->CreateSelect(amount_zero, value, result_amount_not_zero.result);
+    auto carry = ir_builder->CreateSelect(amount_zero, carry_in, result_amount_not_zero.carry);
 
     return{ result, carry };
 }
@@ -52,10 +52,10 @@ llvm::Value* ShiftZeroCheck(
 {
     auto ir_builder = instruction->IrBuilder();
 
-	auto amount_zero = ir_builder->CreateICmpEQ(shift, ir_builder->getInt32(0));
+    auto amount_zero = ir_builder->CreateICmpEQ(shift, ir_builder->getInt32(0));
     auto result_amount_not_zero = non_zero_function(instruction, x, shift);
 
-	return ir_builder->CreateSelect(amount_zero, x, result_amount_not_zero.result);
+    return ir_builder->CreateSelect(amount_zero, x, result_amount_not_zero.result);
 }
 
 ARMFuncs::ResultCarry ARMFuncs::LSL_C(InstructionBlock* instruction, llvm::Value* x, llvm::Value* shift)
@@ -128,11 +128,11 @@ llvm::Value* ARMFuncs::ARMExpandImm(InstructionBlock* instruction, u32 imm12)
 
 ARMFuncs::ResultCarry ARMFuncs::ARMExpandImm_C(InstructionBlock *instruction, u32 imm12, llvm::Value* carry)
 {
-	auto ir_builder = instruction->IrBuilder();
+    auto ir_builder = instruction->IrBuilder();
 
-	auto value = ir_builder->getInt32(imm12 & 0xFF);
-	auto shift = ir_builder->getInt32(2 * (imm12 >> 8));
-	return Shift_C(instruction, value, SRType::ROR, shift, carry);
+    auto value = ir_builder->getInt32(imm12 & 0xFF);
+    auto shift = ir_builder->getInt32(2 * (imm12 >> 8));
+    return Shift_C(instruction, value, SRType::ROR, shift, carry);
 }
 
 // AddWithCarry from armsupp.cpp

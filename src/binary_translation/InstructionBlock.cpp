@@ -50,8 +50,8 @@ llvm::BasicBlock *InstructionBlock::CreateBasicBlock(const char *name)
 
 void InstructionBlock::Link(InstructionBlock* prev, InstructionBlock* next)
 {
-	prev->nexts.push_back(next);
-	next->prevs.push_back(prev);
+    prev->nexts.push_back(next);
+    next->prevs.push_back(prev);
 }
 
 u32 InstructionBlock::Address() const

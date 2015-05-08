@@ -28,6 +28,6 @@ private:
     Register rm;
     u32 imm12;
     u32 imm5;
-	u32 imm4;
+    u32 imm4;
     Op2Type op2;
 };

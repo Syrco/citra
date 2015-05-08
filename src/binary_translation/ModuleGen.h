@@ -50,10 +50,10 @@ private:
     // Generates the entry basic blocks for each instruction
     void GenerateInstructionsEntry();
     // Generates the code of each instruction
-	void GenerateInstructionsCode();
-	// Must be run after the instruction code is generated since it depends on the
-	// inter block jumps
-	void ColorBlocks();
+    void GenerateInstructionsCode();
+    // Must be run after the instruction code is generated since it depends on the
+    // inter block jumps
+    void ColorBlocks();
 
     llvm::Module *module;
     bool verify;
@@ -64,16 +64,16 @@ private:
     std::unique_ptr<llvm::IRBuilder<>> ir_builder;
 
     size_t block_address_array_base;
-	size_t block_address_array_size;
-	/*
-	 * struct BlockAddress
-	 * {
-	 *     void (*function)(u32 index);
-	 *     u32 index;
-	 * }
-	 */
-	llvm::StructType *block_address_type;
-	llvm::Constant *block_address_not_present;
+    size_t block_address_array_size;
+    /*
+     * struct BlockAddress
+     * {
+     *     void (*function)(u32 index);
+     *     u32 index;
+     * }
+     */
+    llvm::StructType *block_address_type;
+    llvm::Constant *block_address_not_present;
     /*
      * i8 **BlockAddressArray;
      *  The array at [i/4 - block_address_array_base] contains the block address for the instruction at i
@@ -109,5 +109,5 @@ private:
     std::vector<std::unique_ptr<InstructionBlock>> instruction_blocks;
     std::unordered_map<u32, InstructionBlock *> instruction_blocks_by_pc;
 
-	std::unique_ptr<BlockColors> block_colors;
+    std::unique_ptr<BlockColors> block_colors;
 };

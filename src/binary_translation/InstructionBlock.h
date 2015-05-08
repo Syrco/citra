@@ -50,9 +50,9 @@ public:
      */
     llvm::BasicBlock *CreateBasicBlock(const char *name);
     /*
-	 * Links two instructions, adding to prev and next lists
-	 */
-	static void Link(InstructionBlock *prev, InstructionBlock *next);
+     * Links two instructions, adding to prev and next lists
+     */
+    static void Link(InstructionBlock *prev, InstructionBlock *next);
 
     u32 Address() const;
     ModuleGen *Module() { return module; }
@@ -60,11 +60,11 @@ public:
 
     llvm::BasicBlock *GetEntryBasicBlock() { return entry_basic_block; }
 
-	bool HasColor() const { return has_color; }
-	void SetColor(size_t color) { this->color = color; has_color = true; }
+    bool HasColor() const { return has_color; }
+    void SetColor(size_t color) { this->color = color; has_color = true; }
     size_t GetColor() const { return color; }
 
-	std::list<InstructionBlock *> GetNexts() const { return nexts; }
+    std::list<InstructionBlock *> GetNexts() const { return nexts; }
     std::list<InstructionBlock *> GetPrevs() const { return prevs; }
 private:
     // Textual representation of the address
@@ -77,9 +77,9 @@ private:
     // The block at the entry to instruction
     llvm::BasicBlock *entry_basic_block;
 
-	bool has_color = false;
-	size_t color;
+    bool has_color = false;
+    size_t color;
 
-	std::list<InstructionBlock *> nexts;
-	std::list<InstructionBlock *> prevs;
+    std::list<InstructionBlock *> nexts;
+    std::list<InstructionBlock *> prevs;
 };

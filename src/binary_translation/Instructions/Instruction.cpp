@@ -56,7 +56,7 @@ void Instruction::GenerateCode(InstructionBlock *instruction_block)
     // If not, jump to the next instruction
     if (!ir_builder->GetInsertBlock()->getTerminator())
     {
-		instruction_block->Module()->BranchWritePCConst(instruction_block, Address() + 4);
+        instruction_block->Module()->BranchWritePCConst(instruction_block, Address() + 4);
     }
 }
 
