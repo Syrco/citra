@@ -14,6 +14,7 @@
 #include <llvm/Target/TargetLibraryInfo.h>
 #include <llvm/Transforms/IPO/PassManagerBuilder.h>
 #include <llvm/Transforms/IPO.h>
+#include <common/logging/log.h>
 #include <iostream>
 
 using namespace llvm;

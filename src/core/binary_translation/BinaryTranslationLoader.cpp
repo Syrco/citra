@@ -7,6 +7,7 @@
 #include <llvm/ExecutionEngine/RuntimeDyld.h>
 #include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <core/mem_map.h>
+#include <common/logging/log.h>
 
 using namespace llvm;
 

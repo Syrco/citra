@@ -136,7 +136,6 @@ ResultStatus AppLoader_NCCH::LoadExec() const {
         s32 priority = exheader_header.arm11_system_local_caps.priority;
         u32 stack_size = exheader_header.codeset_info.stack_size;
         Kernel::g_current_process->Run(entry_point, priority, stack_size);
-		Kernel::LoadExec(entry_point);
 
 		Loader::ROMCodeStart = entry_point;
 		Loader::ROMCodeSize = entry_point + code.size();

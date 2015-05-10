@@ -7,6 +7,7 @@
 #include "InstructionBlock.h"
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalVariable.h>
+#include <common/logging/log.h>
 #include <stack>
 #include "MachineState.h"
 #include "TBAA.h"

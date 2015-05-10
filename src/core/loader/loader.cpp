@@ -128,12 +128,12 @@ ResultStatus LoadFile(const std::string& filename) {
 
     //3DSX file format...
     case FileType::THREEDSX:
-        status = AppLoader_THREEDSX(std::move(file)).Load();
+        status = AppLoader_THREEDSX(std::move(file), filename_filename).Load();
         break;
 
     // Standard ELF file format...
     case FileType::ELF:
-        status = AppLoader_ELF(std::move(file)).Load();
+        status = AppLoader_ELF(std::move(file), filename_filename).Load();
         break;
 
     // NCCH/NCSD container formats...
