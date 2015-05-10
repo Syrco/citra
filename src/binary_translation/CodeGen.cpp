@@ -2,6 +2,7 @@
 #include "ModuleGen.h"
 
 #include "core/loader/loader.h"
+#include "common/logging/log.h"
 
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/Host.h>

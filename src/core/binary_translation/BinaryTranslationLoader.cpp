@@ -1,5 +1,6 @@
 #include "BinaryTranslationLoader.h"
 #include "core/arm/skyeye_common/armdefs.h"
+#include "common/logging/log.h"
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/Support/MemoryBuffer.h>

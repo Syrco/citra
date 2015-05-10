@@ -3687,7 +3687,7 @@ unsigned InterpreterMainLoop(ARMul_State* cpu) {
     Common::Profiling::ScopeTimer timer_execute(profile_execute);
 
 #if ENABLE_BINARY_TRANSLATION
-    BinaryTranslationLoader::SetCpuState(state);
+    BinaryTranslationLoader::SetCpuState(cpu);
 #endif
 
     #undef RM

@@ -5,6 +5,7 @@
 #include "Instructions/Instruction.h"
 #include "Instructions/Types.h"
 #include "InstructionBlock.h"
+#include "common/logging/log.h"
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <stack>
