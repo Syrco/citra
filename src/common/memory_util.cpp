@@ -3,7 +3,8 @@
 // Refer to the license.txt file included.
 
 
-#include "common/common.h"
+#include "common/common_funcs.h"
+#include "common/logging/log.h"
 #include "common/memory_util.h"
 #include "common/string_util.h"
 
@@ -70,7 +71,7 @@ void* AllocateExecutableMemory(size_t size, bool low)
     }
 #endif
 
-#if defined(_M_X64)
+#if EMU_ARCH_BITS == 64
     if ((u64)ptr >= 0x80000000 && low == true)
         LOG_ERROR(Common_Memory, "Executable memory ended up above 2GB!");
 #endif

@@ -4,7 +4,11 @@
 
 #pragma once
 
-#include "common/common.h"
+#include <memory>
+
+#include "common/bit_field.h"
+#include "common/common_types.h"
+#include "common/swap.h"
 
 #include "core/loader/loader.h"
 
@@ -43,6 +47,8 @@ struct NCCH_Header {
     u8 romfs_super_block_hash[0x20];
 };
 
+static_assert(sizeof(NCCH_Header) == 0x200, "NCCH header structure size is wrong");
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // ExeFS (executable file system) headers
 
@@ -61,13 +67,13 @@ struct ExeFs_Header {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // ExHeader (executable file system header) headers
 
-struct ExHeader_SystemInfoFlags{
+struct ExHeader_SystemInfoFlags {
     u8 reserved[5];
     u8 flag;
     u8 remaster_version[2];
 };
 
-struct ExHeader_CodeSegmentInfo{
+struct ExHeader_CodeSegmentInfo {
     u32 address;
     u32 num_max_pages;
     u32 code_size;
@@ -77,24 +83,24 @@ struct ExHeader_CodeSetInfo {
     u8 name[8];
     ExHeader_SystemInfoFlags flags;
     ExHeader_CodeSegmentInfo text;
-    u8 stacksize[4];
+    u32 stack_size;
     ExHeader_CodeSegmentInfo ro;
     u8 reserved[4];
     ExHeader_CodeSegmentInfo data;
-    u8 bsssize[4];
+    u32 bss_size;
 };
 
-struct ExHeader_DependencyList{
+struct ExHeader_DependencyList {
     u8 program_id[0x30][8];
 };
 
-struct ExHeader_SystemInfo{
+struct ExHeader_SystemInfo {
     u64 save_data_size;
     u8 jump_id[8];
     u8 reserved_2[0x30];
 };
 
-struct ExHeader_StorageInfo{
+struct ExHeader_StorageInfo {
     u8 ext_save_data_id[8];
     u8 system_save_data_id[8];
     u8 reserved[8];
@@ -102,30 +108,36 @@ struct ExHeader_StorageInfo{
     u8 other_attributes;
 };
 
-struct ExHeader_ARM11_SystemLocalCaps{
+struct ExHeader_ARM11_SystemLocalCaps {
     u8 program_id[8];
     u32 core_version;
-    u8 flags[3];
+    u8 reserved_flags[2];
+    union {
+        u8 flags0;
+        BitField<0, 2, u8> ideal_processor;
+        BitField<2, 2, u8> affinity_mask;
+        BitField<4, 4, u8> system_mode;
+    };
     u8 priority;
-    u8 resource_limit_descriptor[0x16][2];
+    u8 resource_limit_descriptor[0x10][2];
     ExHeader_StorageInfo storage_info;
-    u8 service_access_control[0x32][8];
+    u8 service_access_control[0x20][8];
     u8 ex_service_access_control[0x2][8];
     u8 reserved[0xf];
     u8 resource_limit_category;
 };
 
-struct ExHeader_ARM11_KernelCaps{
-    u8 descriptors[28][4];
+struct ExHeader_ARM11_KernelCaps {
+    u32_le descriptors[28];
     u8 reserved[0x10];
 };
 
-struct ExHeader_ARM9_AccessControl{
+struct ExHeader_ARM9_AccessControl {
     u8 descriptors[15];
     u8 descversion;
 };
 
-struct ExHeader_Header{
+struct ExHeader_Header {
     ExHeader_CodeSetInfo codeset_info;
     ExHeader_DependencyList dependency_list;
     ExHeader_SystemInfo system_info;
@@ -140,6 +152,8 @@ struct ExHeader_Header{
         ExHeader_ARM9_AccessControl arm9_access_control;
     } access_desc;
 };
+
+static_assert(sizeof(ExHeader_Header) == 0x800, "ExHeader structure size is wrong");
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Loader namespace
@@ -199,12 +213,6 @@ public:
      */
     ResultStatus ReadRomFS(std::vector<u8>& buffer) const override;
 
-    /*
-     * Gets the program id from the NCCH header
-     * @return u64 Program id
-     */
-    u64 GetProgramId() const;
-
 private:
 
     /**
@@ -224,6 +232,12 @@ private:
     bool            is_compressed = false;
 
     u32             entry_point = 0;
+    u32             code_size = 0;
+    u32             stack_size = 0;
+    u32             bss_size = 0;
+    u32             core_version = 0;
+    u8              priority = 0;
+    u8              resource_limit_category = 0;
     u32             ncch_offset = 0; // Offset to NCCH header, can be 0 or after NCSD header
     u32             exefs_offset = 0;
 

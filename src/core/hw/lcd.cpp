@@ -2,7 +2,10 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include <cstring>
+
 #include "common/common_types.h"
+#include "common/logging/log.h"
 
 #include "core/arm/arm_interface.h"
 #include "core/hle/hle.h"
@@ -55,6 +58,7 @@ template void Write<u8>(u32 addr, const u8 data);
 
 /// Initialize hardware
 void Init() {
+    memset(&g_regs, 0, sizeof(g_regs));
     LOG_DEBUG(HW_LCD, "initialized OK");
 }
 

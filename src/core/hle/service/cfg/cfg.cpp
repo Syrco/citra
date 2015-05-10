@@ -4,12 +4,16 @@
 
 #include <algorithm>
 
-#include "core/hle/service/fs/archive.h"
-#include "core/hle/service/service.h"
+#include "common/logging/log.h"
+#include "common/string_util.h"
+
+#include "core/file_sys/file_backend.h"
 #include "core/hle/service/cfg/cfg.h"
 #include "core/hle/service/cfg/cfg_i.h"
 #include "core/hle/service/cfg/cfg_s.h"
 #include "core/hle/service/cfg/cfg_u.h"
+#include "core/hle/service/fs/archive.h"
+#include "core/hle/service/service.h"
 
 namespace Service {
 namespace CFG {
@@ -53,12 +57,12 @@ ResultCode GetConfigInfoBlock(u32 block_id, u32 size, u32 flag, u8* output) {
         });
 
     if (itr == std::end(config->block_entries)) {
-        LOG_ERROR(Service_CFG, "Config block %u with flags %u was not found", block_id, flag);
+        LOG_ERROR(Service_CFG, "Config block 0x%X with flags %u and size %u was not found", block_id, flag, size);
         return ResultCode(ErrorDescription::NotFound, ErrorModule::Config, ErrorSummary::WrongArgument, ErrorLevel::Permanent);
     }
 
     if (itr->size != size) {
-        LOG_ERROR(Service_CFG, "Invalid size %u for config block %u with flags %u", size, block_id, flag);
+        LOG_ERROR(Service_CFG, "Invalid size %u for config block 0x%X with flags %u", size, block_id, flag);
         return ResultCode(ErrorDescription::InvalidSize, ErrorModule::Config, ErrorSummary::WrongArgument, ErrorLevel::Permanent);
     }
 
@@ -207,6 +211,7 @@ void Init() {
 
     // Initialize the Username block
     // TODO(Subv): Initialize this directly in the variable when MSVC supports char16_t string literals
+    memset(&CONSOLE_USERNAME_BLOCK, 0, sizeof(CONSOLE_USERNAME_BLOCK));
     CONSOLE_USERNAME_BLOCK.ng_word = 0;
     CONSOLE_USERNAME_BLOCK.zero = 0;
 
@@ -219,7 +224,6 @@ void Init() {
 }
 
 void Shutdown() {
-
 }
 
 } // namespace CFG

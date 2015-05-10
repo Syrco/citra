@@ -4,21 +4,20 @@
 
 #include <algorithm>
 
-#include "common/common.h"
+#include "common/assert.h"
+#include "common/logging/log.h"
 
 #include "core/arm/arm_interface.h"
 #include "core/core.h"
 #include "core/hle/kernel/kernel.h"
+#include "core/hle/kernel/process.h"
 #include "core/hle/kernel/thread.h"
 #include "core/hle/kernel/timer.h"
 
 namespace Kernel {
 
-unsigned int Object::next_object_id = 0;
-
-SharedPtr<Thread> g_main_thread = nullptr;
+unsigned int Object::next_object_id;
 HandleTable g_handle_table;
-u64 g_program_id = 0;
 
 void WaitObject::AddWaitingThread(SharedPtr<Thread> thread) {
     auto itr = std::find(waiting_threads.begin(), waiting_threads.end(), thread);
@@ -138,6 +137,8 @@ void HandleTable::Clear() {
 void Init() {
     Kernel::ThreadingInit();
     Kernel::TimersInit();
+
+    Object::next_object_id = 0;
 }
 
 /// Shutdown the kernel
@@ -145,18 +146,7 @@ void Shutdown() {
     Kernel::ThreadingShutdown();
     Kernel::TimersShutdown();
     g_handle_table.Clear(); // Free all kernel objects
-}
-
-/**
- * Loads executable stored at specified address
- * @entry_point Entry point in memory of loaded executable
- * @return True on success, otherwise false
- */
-bool LoadExec(u32 entry_point) {
-    // 0x30 is the typical main thread priority I've seen used so far
-    g_main_thread = Kernel::SetupMainThread(Kernel::DEFAULT_STACK_SIZE, entry_point, THREADPRIO_DEFAULT);
-
-    return true;
+    g_current_process = nullptr;
 }
 
 } // namespace

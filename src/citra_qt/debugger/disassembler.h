@@ -9,8 +9,8 @@
 
 #include "ui_disassembler.h"
 
-#include "common/common.h"
 #include "common/break_points.h"
+#include "common/common_types.h"
 
 class QAction;
 class EmuThread;
@@ -51,7 +51,7 @@ class DisassemblerWidget : public QDockWidget
     Q_OBJECT
 
 public:
-    DisassemblerWidget(QWidget* parent, EmuThread& emu_thread);
+    DisassemblerWidget(QWidget* parent, EmuThread* emu_thread);
 
     void Init();
 
@@ -65,6 +65,9 @@ public slots:
     void OnDebugModeEntered();
     void OnDebugModeLeft();
 
+    void OnEmulationStarting(EmuThread* emu_thread);
+    void OnEmulationStopping();
+
 private:
     // returns -1 if no row is selected
     int SelectedRow();
@@ -75,5 +78,5 @@ private:
 
     u32 base_addr;
 
-    EmuThread& emu_thread;
+    EmuThread* emu_thread;
 };

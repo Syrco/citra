@@ -38,16 +38,6 @@ enum : u32 {
     INTBITS  = 0x1C0,
 };
 
-// Different ways to start the next instruction.
-enum {
-    SEQ           = 0,
-    NONSEQ        = 1,
-    PCINCEDSEQ    = 2,
-    PCINCEDNONSEQ = 3,
-    PRIMEPIPE     = 4,
-    RESUME        = 8
-};
-
 // Values for Emulate.
 enum {
     STOP       = 0, // Stop
@@ -55,14 +45,3 @@ enum {
     ONCE       = 2, // Execute just one interation
     RUN        = 3  // Continuous execution
 };
-
-#define FLUSHPIPE state->NextInstr |= PRIMEPIPE
-
-// Coprocessor support functions.
-extern void ARMul_CoProInit(ARMul_State*);
-extern void ARMul_CoProExit(ARMul_State*);
-extern void ARMul_CoProAttach(ARMul_State*, unsigned, ARMul_CPInits*,
-                              ARMul_CPExits*, ARMul_LDCs*, ARMul_STCs*,
-                              ARMul_MRCs*, ARMul_MCRs*, ARMul_MRRCs*, ARMul_MCRRs*,
-                              ARMul_CDPs*, ARMul_CPReads*, ARMul_CPWrites*);
-extern void ARMul_CoProDetach(ARMul_State*, unsigned);

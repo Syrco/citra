@@ -2,6 +2,8 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include "common/logging/log.h"
+
 #include "core/hle/hle.h"
 #include "core/hle/kernel/event.h"
 #include "core/hle/service/nwm_uds.h"
@@ -11,7 +13,7 @@
 
 namespace NWM_UDS {
 
-static Kernel::SharedPtr<Kernel::Event> handle_event = nullptr;
+static Kernel::SharedPtr<Kernel::Event> handle_event;
 
 /**
  * NWM_UDS::Shutdown service function

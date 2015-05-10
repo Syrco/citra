@@ -6,8 +6,10 @@
 
 #include <vector>
 
-#include "common/common.h"
+#include "common/common_types.h"
 #include "common/file_util.h"
+
+#include "core/hle/kernel/process.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Loader namespace
@@ -22,7 +24,6 @@ enum class FileType {
     CXI,
     CIA,
     ELF,
-    BIN,
     THREEDSX, //3DSX
 };
 
@@ -103,6 +104,12 @@ protected:
     std::unique_ptr<FileUtil::IOFile> file;
     bool                              is_loaded = false;
 };
+
+/**
+ * Common address mappings found in most games, used for binary formats that don't have this
+ * information.
+ */
+extern const std::initializer_list<Kernel::AddressMapping> default_address_mappings;
 
 /**
  * Identifies and loads a bootable file

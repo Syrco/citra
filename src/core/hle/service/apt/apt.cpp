@@ -2,7 +2,9 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include "common/common_paths.h"
 #include "common/file_util.h"
+#include "common/logging/log.h"
 
 #include "core/hle/service/service.h"
 #include "core/hle/service/apt/apt.h"
@@ -28,15 +30,15 @@ namespace APT {
 static const VAddr SHARED_FONT_VADDR = 0x18000000;
 
 /// Handle to shared memory region designated to for shared system font
-static Kernel::SharedPtr<Kernel::SharedMemory> shared_font_mem = nullptr;
+static Kernel::SharedPtr<Kernel::SharedMemory> shared_font_mem;
 
-static Kernel::SharedPtr<Kernel::Mutex> lock = nullptr;
-static Kernel::SharedPtr<Kernel::Event> notification_event = nullptr; ///< APT notification event
-static Kernel::SharedPtr<Kernel::Event> start_event = nullptr;        ///< APT start event
+static Kernel::SharedPtr<Kernel::Mutex> lock;
+static Kernel::SharedPtr<Kernel::Event> notification_event; ///< APT notification event
+static Kernel::SharedPtr<Kernel::Event> start_event; ///< APT start event
 
 static std::vector<u8> shared_font;
 
-static u32 cpu_percent = 0; ///< CPU time available to the running application
+static u32 cpu_percent; ///< CPU time available to the running application
 
 void Initialize(Service::Interface* self) {
     u32* cmd_buff = Kernel::GetCommandBuffer();
@@ -309,6 +311,7 @@ void Init() {
     }
 
     lock = Kernel::Mutex::Create(false, "APT_U:Lock");
+
     cpu_percent = 0;
 
     // TODO(bunnei): Check if these are created in Initialize or on APT process startup.
@@ -317,7 +320,11 @@ void Init() {
 }
 
 void Shutdown() {
-
+    shared_font.clear();
+    shared_font_mem = nullptr;
+    lock = nullptr;
+    notification_event = nullptr;
+    start_event = nullptr;
 }
 
 } // namespace APT

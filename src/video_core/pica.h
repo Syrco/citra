@@ -10,8 +10,11 @@
 #include <map>
 #include <vector>
 
+#include "common/assert.h"
 #include "common/bit_field.h"
+#include "common/common_funcs.h"
 #include "common/common_types.h"
+#include "common/logging/log.h"
 
 #include "core/mem_map.h"
 
@@ -223,7 +226,8 @@ struct Regs {
             Texture1               = 0x4,
             Texture2               = 0x5,
             Texture3               = 0x6,
-            // 0x7-0xc = primary color??
+
+            PreviousBuffer         = 0xd,
             Constant               = 0xe,
             Previous               = 0xf,
         };
@@ -296,7 +300,18 @@ struct Regs {
             BitField<24, 8, u32> const_a;
         };
 
-        INSERT_PADDING_WORDS(0x1);
+        union {
+            BitField< 0, 2, u32> color_scale;
+            BitField<16, 2, u32> alpha_scale;
+        };
+
+        inline unsigned GetColorMultiplier() const {
+            return (color_scale < 3) ? (1 << color_scale) : 1;
+        }
+
+        inline unsigned GetAlphaMultiplier() const {
+            return (alpha_scale < 3) ? (1 << alpha_scale) : 1;
+        }
     };
 
     TevStageConfig tev_stage0;
@@ -306,11 +321,36 @@ struct Regs {
     TevStageConfig tev_stage2;
     INSERT_PADDING_WORDS(0x3);
     TevStageConfig tev_stage3;
-    INSERT_PADDING_WORDS(0x13);
+    INSERT_PADDING_WORDS(0x3);
+
+    union {
+        // Tev stages 0-3 write their output to the combiner buffer if the corresponding bit in
+        // these masks are set
+        BitField< 8, 4, u32> update_mask_rgb;
+        BitField<12, 4, u32> update_mask_a;
+
+        bool TevStageUpdatesCombinerBufferColor(unsigned stage_index) const {
+            return (stage_index < 4) && (update_mask_rgb & (1 << stage_index));
+        }
+
+        bool TevStageUpdatesCombinerBufferAlpha(unsigned stage_index) const {
+            return (stage_index < 4) && (update_mask_a & (1 << stage_index));
+        }
+    } tev_combiner_buffer_input;
+    
+    INSERT_PADDING_WORDS(0xf);
     TevStageConfig tev_stage4;
     INSERT_PADDING_WORDS(0x3);
     TevStageConfig tev_stage5;
-    INSERT_PADDING_WORDS(0x3);
+
+    union {
+        BitField< 0, 8, u32> r;
+        BitField< 8, 8, u32> g;
+        BitField<16, 8, u32> b;
+        BitField<24, 8, u32> a;
+    } tev_combiner_buffer_color;
+
+    INSERT_PADDING_WORDS(0x2);
 
     const std::array<Regs::TevStageConfig,6> GetTevStages() const {
         return { tev_stage0, tev_stage1,
@@ -423,9 +463,7 @@ struct Regs {
         D24S8  = 3
     };
 
-    /*
-     * Returns the number of bytes in the specified depth format
-     */
+    // Returns the number of bytes in the specified depth format
     static u32 BytesPerDepthPixel(DepthFormat format) {
         switch (format) {
         case DepthFormat::D16:
@@ -434,6 +472,20 @@ struct Regs {
             return 3;
         case DepthFormat::D24S8:
             return 4;
+        default:
+            LOG_CRITICAL(HW_GPU, "Unknown depth format %u", format);
+            UNIMPLEMENTED();
+        }
+    }
+
+    // Returns the number of bits per depth component of the specified depth format
+    static u32 DepthBitsPerPixel(DepthFormat format) {
+        switch (format) {
+        case DepthFormat::D16:
+            return 16;
+        case DepthFormat::D24:
+        case DepthFormat::D24S8:
+            return 24;
         default:
             LOG_CRITICAL(HW_GPU, "Unknown depth format %u", format);
             UNIMPLEMENTED();
@@ -489,14 +541,14 @@ struct Regs {
 
     INSERT_PADDING_WORDS(0xe0);
 
-    struct {
-        enum class Format : u64 {
-            BYTE = 0,
-            UBYTE = 1,
-            SHORT = 2,
-            FLOAT = 3,
-        };
+    enum class VertexAttributeFormat : u64 {
+        BYTE = 0,
+        UBYTE = 1,
+        SHORT = 2,
+        FLOAT = 3,
+    };
 
+    struct {
         BitField<0, 29, u32> base_address;
 
         u32 GetPhysicalBaseAddress() const {
@@ -505,29 +557,29 @@ struct Regs {
 
         // Descriptor for internal vertex attributes
         union {
-            BitField< 0,  2, Format> format0; // size of one element
+            BitField< 0,  2, VertexAttributeFormat> format0; // size of one element
             BitField< 2,  2, u64> size0;      // number of elements minus 1
-            BitField< 4,  2, Format> format1;
+            BitField< 4,  2, VertexAttributeFormat> format1;
             BitField< 6,  2, u64> size1;
-            BitField< 8,  2, Format> format2;
+            BitField< 8,  2, VertexAttributeFormat> format2;
             BitField<10,  2, u64> size2;
-            BitField<12,  2, Format> format3;
+            BitField<12,  2, VertexAttributeFormat> format3;
             BitField<14,  2, u64> size3;
-            BitField<16,  2, Format> format4;
+            BitField<16,  2, VertexAttributeFormat> format4;
             BitField<18,  2, u64> size4;
-            BitField<20,  2, Format> format5;
+            BitField<20,  2, VertexAttributeFormat> format5;
             BitField<22,  2, u64> size5;
-            BitField<24,  2, Format> format6;
+            BitField<24,  2, VertexAttributeFormat> format6;
             BitField<26,  2, u64> size6;
-            BitField<28,  2, Format> format7;
+            BitField<28,  2, VertexAttributeFormat> format7;
             BitField<30,  2, u64> size7;
-            BitField<32,  2, Format> format8;
+            BitField<32,  2, VertexAttributeFormat> format8;
             BitField<34,  2, u64> size8;
-            BitField<36,  2, Format> format9;
+            BitField<36,  2, VertexAttributeFormat> format9;
             BitField<38,  2, u64> size9;
-            BitField<40,  2, Format> format10;
+            BitField<40,  2, VertexAttributeFormat> format10;
             BitField<42,  2, u64> size10;
-            BitField<44,  2, Format> format11;
+            BitField<44,  2, VertexAttributeFormat> format11;
             BitField<46,  2, u64> size11;
 
             BitField<48, 12, u64> attribute_mask;
@@ -536,8 +588,8 @@ struct Regs {
             BitField<60,  4, u64> num_extra_attributes;
         };
 
-        inline Format GetFormat(int n) const {
-            Format formats[] = {
+        inline VertexAttributeFormat GetFormat(int n) const {
+            VertexAttributeFormat formats[] = {
                 format0, format1, format2, format3,
                 format4, format5, format6, format7,
                 format8, format9, format10, format11
@@ -555,12 +607,16 @@ struct Regs {
         }
 
         inline int GetElementSizeInBytes(int n) const {
-            return (GetFormat(n) == Format::FLOAT) ? 4 :
-                (GetFormat(n) == Format::SHORT) ? 2 : 1;
+            return (GetFormat(n) == VertexAttributeFormat::FLOAT) ? 4 :
+                (GetFormat(n) == VertexAttributeFormat::SHORT) ? 2 : 1;
         }
 
         inline int GetStride(int n) const {
             return GetNumElements(n) * GetElementSizeInBytes(n);
+        }
+
+        inline bool IsDefaultAttribute(int id) const {
+            return (id >= 12) || (attribute_mask & (1 << id)) != 0;
         }
 
         inline int GetNumTotalAttributes() const {
@@ -625,7 +681,18 @@ struct Regs {
     u32 trigger_draw;
     u32 trigger_draw_indexed;
 
-    INSERT_PADDING_WORDS(0x2e);
+    INSERT_PADDING_WORDS(0x2);
+
+    // These registers are used to setup the default "fall-back" vertex shader attributes
+    struct {
+        // Index of the current default attribute
+        u32 index;
+        
+        // Writing to these registers sets the "current" default attribute.
+        u32 set_value[3];
+    } vs_default_attributes_setup;
+    
+    INSERT_PADDING_WORDS(0x28);
 
     enum class TriangleTopology : u32 {
         List        = 0,
@@ -669,7 +736,7 @@ struct Regs {
         BitField<56, 4, u64> attribute14_register;
         BitField<60, 4, u64> attribute15_register;
 
-        int GetRegisterForAttribute(int attribute_index) {
+        int GetRegisterForAttribute(int attribute_index) const {
             u64 fields[] = {
                 attribute0_register,  attribute1_register,  attribute2_register,  attribute3_register,
                 attribute4_register,  attribute5_register,  attribute6_register,  attribute7_register,
@@ -766,8 +833,10 @@ struct Regs {
         ADD_FIELD(tev_stage1);
         ADD_FIELD(tev_stage2);
         ADD_FIELD(tev_stage3);
+        ADD_FIELD(tev_combiner_buffer_input);
         ADD_FIELD(tev_stage4);
         ADD_FIELD(tev_stage5);
+        ADD_FIELD(tev_combiner_buffer_color);
         ADD_FIELD(output_merger);
         ADD_FIELD(framebuffer);
         ADD_FIELD(vertex_attributes);
@@ -775,6 +844,7 @@ struct Regs {
         ADD_FIELD(num_vertices);
         ADD_FIELD(trigger_draw);
         ADD_FIELD(trigger_draw_indexed);
+        ADD_FIELD(vs_default_attributes_setup);
         ADD_FIELD(triangle_topology);
         ADD_FIELD(vs_bool_uniforms);
         ADD_FIELD(vs_int_uniforms);
@@ -840,8 +910,10 @@ ASSERT_REG_POSITION(tev_stage0, 0xc0);
 ASSERT_REG_POSITION(tev_stage1, 0xc8);
 ASSERT_REG_POSITION(tev_stage2, 0xd0);
 ASSERT_REG_POSITION(tev_stage3, 0xd8);
+ASSERT_REG_POSITION(tev_combiner_buffer_input, 0xe0);
 ASSERT_REG_POSITION(tev_stage4, 0xf0);
 ASSERT_REG_POSITION(tev_stage5, 0xf8);
+ASSERT_REG_POSITION(tev_combiner_buffer_color, 0xfd);
 ASSERT_REG_POSITION(output_merger, 0x100);
 ASSERT_REG_POSITION(framebuffer, 0x110);
 ASSERT_REG_POSITION(vertex_attributes, 0x200);
@@ -849,6 +921,7 @@ ASSERT_REG_POSITION(index_array, 0x227);
 ASSERT_REG_POSITION(num_vertices, 0x228);
 ASSERT_REG_POSITION(trigger_draw, 0x22e);
 ASSERT_REG_POSITION(trigger_draw_indexed, 0x22f);
+ASSERT_REG_POSITION(vs_default_attributes_setup, 0x232);
 ASSERT_REG_POSITION(triangle_topology, 0x25e);
 ASSERT_REG_POSITION(vs_bool_uniforms, 0x2b0);
 ASSERT_REG_POSITION(vs_int_uniforms, 0x2b1);
@@ -977,16 +1050,5 @@ union CommandHeader {
     BitField<20, 11, u32> extra_data_length;
     BitField<31,  1, u32> group_commands;
 };
-
-// TODO: Ugly, should fix PhysicalToVirtualAddress instead
-inline static u32 PAddrToVAddr(u32 addr) {
-    if (addr >= Memory::VRAM_PADDR && addr < Memory::VRAM_PADDR + Memory::VRAM_SIZE) {
-        return addr - Memory::VRAM_PADDR + Memory::VRAM_VADDR;
-    } else if (addr >= Memory::FCRAM_PADDR && addr < Memory::FCRAM_PADDR + Memory::FCRAM_SIZE) {
-        return addr - Memory::FCRAM_PADDR + Memory::HEAP_LINEAR_VADDR;
-    } else {
-        return 0;
-    }
-}
 
 } // namespace

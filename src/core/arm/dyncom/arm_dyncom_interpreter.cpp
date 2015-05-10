@@ -6,13 +6,12 @@
 
 #include <algorithm>
 #include <cstdio>
-#include <unordered_map>
 
 #include "common/logging/log.h"
 #include "common/profiler.h"
 
 #include "core/mem_map.h"
-#include "core/hle/hle.h"
+#include "core/hle/svc.h"
 #include "core/arm/disassembler/arm_disasm.h"
 #include "core/arm/dyncom/arm_dyncom_interpreter.h"
 #include "core/arm/dyncom/arm_dyncom_thumb.h"
@@ -3538,25 +3537,6 @@ const transop_fp_t arm_instruction_trans[] = {
     INTERPRETER_TRANSLATE(blx_1_thumb)
 };
 
-typedef std::unordered_map<u32, int> bb_map;
-static bb_map CreamCache;
-
-static void insert_bb(unsigned int addr, int start) {
-    CreamCache[addr] = start;
-}
-
-static int find_bb(unsigned int addr, int& start) {
-    int ret = -1;
-    bb_map::const_iterator it = CreamCache.find(addr);
-    if (it != CreamCache.end()) {
-        start = static_cast<int>(it->second);
-        ret = 0;
-    } else {
-        ret = -1;
-    }
-    return ret;
-}
-
 enum {
     FETCH_SUCCESS,
     FETCH_FAILURE
@@ -3685,7 +3665,9 @@ translated:
         }
         ret = inst_base->br;
     };
-    insert_bb(pc_start, bb_start);
+
+    cpu->instruction_cache[pc_start] = bb_start;
+
     return KEEP_GOING;
 }
 
@@ -3701,7 +3683,7 @@ static int clz(unsigned int x) {
     return n;
 }
 
-unsigned InterpreterMainLoop(ARMul_State* state) {
+unsigned InterpreterMainLoop(ARMul_State* cpu) {
     Common::Profiling::ScopeTimer timer_execute(profile_execute);
 
 #if ENABLE_BINARY_TRANSLATION
@@ -3969,8 +3951,6 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
     #define PC (cpu->Reg[15])
     #define CHECK_EXT_INT if (!cpu->NirqSig && !(cpu->Cpsr & 0x80)) goto END;
 
-    ARMul_State* cpu = state;
-
     // GCC and Clang have a C++ extension to support a lookup table of labels. Otherwise, fallback
     // to a clunky switch statement.
 #if defined __GNUC__ || defined __clang__
@@ -4027,9 +4007,14 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
 
         phys_addr = cpu->Reg[15];
 
-        if (find_bb(cpu->Reg[15], ptr) == -1)
+        // Find the cached instruction cream, otherwise translate it...
+        auto itr = cpu->instruction_cache.find(cpu->Reg[15]);
+        if (itr != cpu->instruction_cache.end()) {
+            ptr = itr->second;
+        } else {
             if (InterpreterTranslate(cpu, ptr, cpu->Reg[15]) == FETCH_EXCEPTION)
                 goto END;
+        }
 
         inst_base = (arm_inst *)&inst_buf[ptr];
         GOTO_NEXT_INST;
@@ -6273,7 +6258,7 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
     SWI_INST:
     {
         if (inst_base->cond == 0xE || CondPassed(cpu, inst_base->cond)) {
-            HLE::CallSVC(Memory::Read32(cpu->Reg[15]));
+            SVC::CallSVC(Memory::Read32(cpu->Reg[15]));
         }
 
         cpu->Reg[15] += GET_INST_SIZE(cpu);
@@ -6531,24 +6516,24 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
                 s16 sum4 = ((rn_val >> 24) & 0xFF) + ((rm_val >> 24) & 0xFF);
 
                 if (sum1 >= 0x100)
-                    state->Cpsr |= (1 << 16);
+                    cpu->Cpsr |= (1 << 16);
                 else
-                    state->Cpsr &= ~(1 << 16);
+                    cpu->Cpsr &= ~(1 << 16);
 
                 if (sum2 >= 0x100)
-                    state->Cpsr |= (1 << 17);
+                    cpu->Cpsr |= (1 << 17);
                 else
-                    state->Cpsr &= ~(1 << 17);
+                    cpu->Cpsr &= ~(1 << 17);
 
                 if (sum3 >= 0x100)
-                    state->Cpsr |= (1 << 18);
+                    cpu->Cpsr |= (1 << 18);
                 else
-                    state->Cpsr &= ~(1 << 18);
+                    cpu->Cpsr &= ~(1 << 18);
 
                 if (sum4 >= 0x100)
-                    state->Cpsr |= (1 << 19);
+                    cpu->Cpsr |= (1 << 19);
                 else
-                    state->Cpsr &= ~(1 << 19);
+                    cpu->Cpsr &= ~(1 << 19);
 
                 lo_result = ((sum1 & 0xFF) | (sum2 & 0xFF) << 8);
                 hi_result = ((sum3 & 0xFF) | (sum4 & 0xFF) << 8);
@@ -6561,24 +6546,24 @@ unsigned InterpreterMainLoop(ARMul_State* state) {
                 s16 diff4 = ((rn_val >> 24) & 0xFF) - ((rm_val >> 24) & 0xFF);
 
                 if (diff1 >= 0)
-                    state->Cpsr |= (1 << 16);
+                    cpu->Cpsr |= (1 << 16);
                 else
-                    state->Cpsr &= ~(1 << 16);
+                    cpu->Cpsr &= ~(1 << 16);
 
                 if (diff2 >= 0)
-                    state->Cpsr |= (1 << 17);
+                    cpu->Cpsr |= (1 << 17);
                 else
-                    state->Cpsr &= ~(1 << 17);
+                    cpu->Cpsr &= ~(1 << 17);
 
                 if (diff3 >= 0)
-                    state->Cpsr |= (1 << 18);
+                    cpu->Cpsr |= (1 << 18);
                 else
-                    state->Cpsr &= ~(1 << 18);
+                    cpu->Cpsr &= ~(1 << 18);
 
                 if (diff4 >= 0)
-                    state->Cpsr |= (1 << 19);
+                    cpu->Cpsr |= (1 << 19);
                 else
-                    state->Cpsr &= ~(1 << 19);
+                    cpu->Cpsr &= ~(1 << 19);
 
                 lo_result = (diff1 & 0xFF) | ((diff2 & 0xFF) << 8);
                 hi_result = (diff3 & 0xFF) | ((diff4 & 0xFF) << 8);

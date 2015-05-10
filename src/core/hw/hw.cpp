@@ -3,6 +3,7 @@
 // Refer to the license.txt file included.
 
 #include "common/common_types.h"
+#include "common/logging/log.h"
 
 #include "core/hw/hw.h"
 #include "core/hw/gpu.h"
@@ -63,6 +64,8 @@ void Init() {
 
 /// Shutdown hardware
 void Shutdown() {
+    GPU::Shutdown();
+    LCD::Shutdown();
     LOG_DEBUG(HW, "shutdown OK");
 }
 

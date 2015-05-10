@@ -7,7 +7,6 @@
 #include "common/assert.h"
 
 #if defined(_MSC_VER) && _MSC_VER <= 1800 // MSVC 2013.
-#define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h> // For QueryPerformanceCounter/Frequency
 #endif
@@ -127,10 +126,9 @@ void TimingResultsAggregator::AddFrame(const ProfilingFrameResult& frame_result)
 static AggregatedDuration AggregateField(const std::vector<Duration>& v, size_t len) {
     AggregatedDuration result;
     result.avg = Duration::zero();
-
     result.min = result.max = (len == 0 ? Duration::zero() : v[0]);
 
-    for (size_t i = 1; i < len; ++i) {
+    for (size_t i = 0; i < len; ++i) {
         Duration value = v[i];
         result.avg += value;
         result.min = std::min(result.min, value);

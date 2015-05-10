@@ -2,6 +2,8 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include "common/logging/log.h"
+
 #include "core/hle/hle.h"
 #include "core/hle/kernel/event.h"
 #include "core/hle/service/y2r_u.h"
@@ -11,7 +13,7 @@
 
 namespace Y2R_U {
 
-static Kernel::SharedPtr<Kernel::Event> completion_event = 0;
+static Kernel::SharedPtr<Kernel::Event> completion_event;
 
 /**
  * Y2R_U::IsBusyConversion service function

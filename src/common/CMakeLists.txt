@@ -5,13 +5,11 @@ set(SRCS
             break_points.cpp
             emu_window.cpp
             file_util.cpp
-            hash.cpp
             key_map.cpp
             logging/filter.cpp
             logging/text_formatter.cpp
             logging/backend.cpp
             math_util.cpp
-            mem_arena.cpp
             memory_util.cpp
             misc.cpp
             profiler.cpp
@@ -27,7 +25,6 @@ set(HEADERS
             bit_field.h
             break_points.h
             chunk_file.h
-            common.h
             common_funcs.h
             common_paths.h
             common_types.h
@@ -37,7 +34,6 @@ set(HEADERS
             emu_window.h
             fifo_queue.h
             file_util.h
-            hash.h
             key_map.h
             linear_disk_cache.h
             logging/text_formatter.h
@@ -46,7 +42,6 @@ set(HEADERS
             logging/backend.h
             make_unique.h
             math_util.h
-            mem_arena.h
             memory_util.h
             platform.h
             profiler.h

@@ -2,10 +2,16 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include <algorithm>
 #include <memory>
 
-#include "core/loader/ncch.h"
+#include "common/logging/log.h"
+#include "common/make_unique.h"
+#include "common/string_util.h"
+#include "common/swap.h"
+
 #include "core/hle/kernel/kernel.h"
+#include "core/loader/ncch.h"
 #include "core/mem_map.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -115,7 +121,21 @@ ResultStatus AppLoader_NCCH::LoadExec() const {
 
     std::vector<u8> code;
     if (ResultStatus::Success == ReadCode(code)) {
+        std::string process_name = Common::StringFromFixedZeroTerminatedBuffer(
+                (const char*)exheader_header.codeset_info.name, 8);
+        u64 program_id = *reinterpret_cast<u64_le const*>(&ncch_header.program_id[0]);
+        Kernel::g_current_process = Kernel::Process::Create(process_name, program_id);
+
+        // Copy data while converting endianess
+        std::array<u32, ARRAY_SIZE(exheader_header.arm11_kernel_caps.descriptors)> kernel_caps;
+        std::copy_n(exheader_header.arm11_kernel_caps.descriptors, kernel_caps.size(), begin(kernel_caps));
+        Kernel::g_current_process->ParseKernelCaps(kernel_caps.data(), kernel_caps.size());
+
         Memory::WriteBlock(entry_point, &code[0], code.size());
+
+        s32 priority = exheader_header.arm11_system_local_caps.priority;
+        u32 stack_size = exheader_header.codeset_info.stack_size;
+        Kernel::g_current_process->Run(entry_point, priority, stack_size);
 		Kernel::LoadExec(entry_point);
 
 		Loader::ROMCodeStart = entry_point;
@@ -205,20 +225,33 @@ ResultStatus AppLoader_NCCH::Load() {
     if (file->ReadBytes(&exheader_header, sizeof(ExHeader_Header)) != sizeof(ExHeader_Header))
         return ResultStatus::Error;
 
-    is_compressed = (exheader_header.codeset_info.flags.flag & 1) == 1;
-    entry_point = exheader_header.codeset_info.text.address;
+    is_compressed           = (exheader_header.codeset_info.flags.flag & 1) == 1;
+    entry_point             = exheader_header.codeset_info.text.address;
+    code_size               = exheader_header.codeset_info.text.code_size;
+    stack_size              = exheader_header.codeset_info.stack_size;
+    bss_size                = exheader_header.codeset_info.bss_size;
+    core_version            = exheader_header.arm11_system_local_caps.core_version;
+    priority                = exheader_header.arm11_system_local_caps.priority;
+    resource_limit_category = exheader_header.arm11_system_local_caps.resource_limit_category;
 
-    LOG_INFO(Loader, "Name:            %s", exheader_header.codeset_info.name);
-    LOG_DEBUG(Loader, "Code compressed: %s", is_compressed ? "yes" : "no");
-    LOG_DEBUG(Loader, "Entry point:     0x%08X", entry_point);
+    LOG_INFO(Loader,  "Name:                         %s"   , exheader_header.codeset_info.name);
+    LOG_DEBUG(Loader, "Code compressed:             %s"    , is_compressed ? "yes" : "no");
+    LOG_DEBUG(Loader, "Entry point:                 0x%08X", entry_point);
+    LOG_DEBUG(Loader, "Code size:                   0x%08X", code_size);
+    LOG_DEBUG(Loader, "Stack size:                  0x%08X", stack_size);
+    LOG_DEBUG(Loader, "Bss size:                    0x%08X", bss_size);
+    LOG_DEBUG(Loader, "Core version:                %d"    , core_version);
+    LOG_DEBUG(Loader, "Thread priority:             0x%X"  , priority);
+    LOG_DEBUG(Loader, "Resource limit descriptor:   0x%08X", exheader_header.arm11_system_local_caps.resource_limit_descriptor);
+    LOG_DEBUG(Loader, "Resource limit category:     %d"    , resource_limit_category);
 
     // Read ExeFS...
 
     exefs_offset = ncch_header.exefs_offset * kBlockSize;
     u32 exefs_size = ncch_header.exefs_size * kBlockSize;
 
-    LOG_DEBUG(Loader, "ExeFS offset:    0x%08X", exefs_offset);
-    LOG_DEBUG(Loader, "ExeFS size:      0x%08X", exefs_size);
+    LOG_DEBUG(Loader, "ExeFS offset:                0x%08X", exefs_offset);
+    LOG_DEBUG(Loader, "ExeFS size:                  0x%08X", exefs_size);
 
     file->Seek(exefs_offset + ncch_offset, SEEK_SET);
     if (file->ReadBytes(&exefs_header, sizeof(ExeFs_Header)) != sizeof(ExeFs_Header))
@@ -254,8 +287,8 @@ ResultStatus AppLoader_NCCH::ReadRomFS(std::vector<u8>& buffer) const {
         u32 romfs_offset = ncch_offset + (ncch_header.romfs_offset * kBlockSize) + 0x1000;
         u32 romfs_size = (ncch_header.romfs_size * kBlockSize) - 0x1000;
 
-        LOG_DEBUG(Loader, "RomFS offset:    0x%08X", romfs_offset);
-        LOG_DEBUG(Loader, "RomFS size:      0x%08X", romfs_size);
+        LOG_DEBUG(Loader, "RomFS offset:           0x%08X", romfs_offset);
+        LOG_DEBUG(Loader, "RomFS size:             0x%08X", romfs_size);
 
         buffer.resize(romfs_size);
 
@@ -267,10 +300,6 @@ ResultStatus AppLoader_NCCH::ReadRomFS(std::vector<u8>& buffer) const {
     }
     LOG_DEBUG(Loader, "NCCH has no RomFS");
     return ResultStatus::ErrorNotUsed;
-}
-
-u64 AppLoader_NCCH::GetProgramId() const {
-    return *reinterpret_cast<u64 const*>(&ncch_header.program_id[0]);
 }
 
 } // namespace Loader

@@ -7,21 +7,16 @@
 #include <boost/intrusive_ptr.hpp>
 
 #include <array>
+#include <memory>
 #include <string>
 #include <vector>
 
-#include "common/common.h"
+#include "common/common_types.h"
+
+#include "core/hle/hle.h"
 #include "core/hle/result.h"
 
-typedef u32 Handle;
-typedef s32 Result;
-
-// TODO: It would be nice to eventually replace these with strong types that prevent accidental
-// conversion between each other.
-typedef u32 VAddr; ///< Represents a pointer in the userspace virtual address space.
-typedef u32 PAddr; ///< Represents a pointer in the ARM11 physical address space.
-
-const Handle INVALID_HANDLE = 0;
+struct ApplicationInfo;
 
 namespace Kernel {
 
@@ -95,11 +90,12 @@ public:
         return false;
     }
 
+public:
+    static unsigned int next_object_id;
+
 private:
     friend void intrusive_ptr_add_ref(Object*);
     friend void intrusive_ptr_release(Object*);
-
-    static unsigned int next_object_id;
 
     unsigned int ref_count = 0;
     unsigned int object_id = next_object_id++;
@@ -277,23 +273,10 @@ private:
 
 extern HandleTable g_handle_table;
 
-/// The ID code of the currently running game
-/// TODO(Subv): This variable should not be here, 
-/// we need a way to store information about the currently loaded application 
-/// for later query during runtime, maybe using the LDR service?
-extern u64 g_program_id;
-
 /// Initialize the kernel
 void Init();
 
 /// Shutdown the kernel
 void Shutdown();
-
-/**
- * Loads executable stored at specified address
- * @entry_point Entry point in memory of loaded executable
- * @return True on success, otherwise false
- */
-bool LoadExec(u32 entry_point);
 
 } // namespace

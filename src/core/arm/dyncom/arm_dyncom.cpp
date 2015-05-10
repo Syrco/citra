@@ -2,6 +2,10 @@
 // Licensed under GPLv2 or any later version
 // Refer to the license.txt file included.
 
+#include <cstring>
+
+#include "common/make_unique.h"
+
 #include "core/arm/skyeye_common/armemu.h"
 #include "core/arm/skyeye_common/vfp/vfp.h"
 
@@ -12,18 +16,13 @@
 #include "core/core.h"
 #include "core/core_timing.h"
 
-const static cpu_config_t s_arm11_cpu_info = {
-    "armv6", "arm11", 0x0007b000, 0x0007f000, NONCACHE
-};
-
 ARM_DynCom::ARM_DynCom(PrivilegeMode initial_mode) {
-    state = std::unique_ptr<ARMul_State>(new ARMul_State);
+    state = Common::make_unique<ARMul_State>();
 
     ARMul_NewState(state.get());
     ARMul_SelectProcessor(state.get(), ARM_v6_Prop | ARM_v5_Prop | ARM_v5e_Prop);
 
     state->abort_model = ABORT_BASE_RESTORED;
-    state->cpu = (cpu_config_t*)&s_arm11_cpu_info;
 
     state->bigendSig = LOW;
     state->lateabtSig = LOW;
@@ -31,7 +30,6 @@ ARM_DynCom::ARM_DynCom(PrivilegeMode initial_mode) {
 
     // Reset the core to initial state
     ARMul_Reset(state.get());
-    state->NextInstr = RESUME; // NOTE: This will be overwritten by LoadContext
     state->Emulate = RUN;
 
     // Switch to the desired privilege mode.
@@ -99,7 +97,6 @@ void ARM_DynCom::ResetContext(Core::ThreadContext& context, u32 stack_top, u32 e
     context.pc = entry_point;
     context.sp = stack_top;
     context.cpsr = 0x1F; // Usermode
-    context.mode = 8;    // Instructs dyncom CPU core to start execution as if it's "resuming" a thread.
 }
 
 void ARM_DynCom::SaveContext(Core::ThreadContext& ctx) {
@@ -113,8 +110,6 @@ void ARM_DynCom::SaveContext(Core::ThreadContext& ctx) {
 
     ctx.fpscr = state->VFP[1];
     ctx.fpexc = state->VFP[2];
-
-    ctx.mode = state->NextInstr;
 }
 
 void ARM_DynCom::LoadContext(const Core::ThreadContext& ctx) {
@@ -128,8 +123,6 @@ void ARM_DynCom::LoadContext(const Core::ThreadContext& ctx) {
 
     state->VFP[1] = ctx.fpscr;
     state->VFP[2] = ctx.fpexc;
-
-    state->NextInstr = ctx.mode;
 }
 
 void ARM_DynCom::PrepareReschedule() {

@@ -4,7 +4,7 @@
 
 #include <GLFW/glfw3.h>
 
-#include "common/common.h"
+#include "common/logging/log.h"
 
 #include "video_core/video_core.h"
 
@@ -31,7 +31,7 @@ void EmuWindow_GLFW::OnMouseButtonEvent(GLFWwindow* win, int button, int action,
 }
 
 void EmuWindow_GLFW::OnCursorPosEvent(GLFWwindow* win, double x, double y) {
-    GetEmuWindow(win)->TouchMoved(static_cast<unsigned>(x), static_cast<unsigned>(y));
+    GetEmuWindow(win)->TouchMoved(static_cast<unsigned>(std::max(x, 0.0)), static_cast<unsigned>(std::max(y, 0.0)));
 }
 
 /// Called by GLFW when a key event occurs
